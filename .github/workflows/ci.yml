@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  app:
+    name: Lint / Typecheck / Test / Build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: serveproof
+          POSTGRES_PASSWORD: serveproof
+          POSTGRES_DB: serveproof_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U serveproof -d serveproof_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://serveproof:serveproof@127.0.0.1:5433/serveproof_test
+      REDIS_URL: redis://127.0.0.1:6379/15
+      AUTH_SECRET: serveproof-ci-test-secret
+      REPORT_SIGNING_KEY: serveproof-ci-report-key
+      PROVIDER_ENCRYPTION_KEY: serveproof-ci-provider-encryption-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply test database migrations
+        run: pnpm --filter @serveproof/db migrate:deploy
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+
+      - name: Lint (prettier)
+        run: pnpm lint
+
+      - name: Build packages and apps
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and API integration tests
+        run: pnpm test
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Anchor program build/test job is added in Phase 2 as a separate workflow
+  # (program deploys are decoupled from app deploys — spec §29.10).

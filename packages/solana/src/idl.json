@@ -1,0 +1,788 @@
+{
+  "address": "A2snJHtFRK8wKawieDTQy6wMReJCP3BxU6i6y9aECJhi",
+  "metadata": {
+    "name": "serveproof",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "ServeProof settlement program — verifiable USDC tip payouts"
+  },
+  "instructions": [
+    {
+      "name": "initialize_config",
+      "docs": ["Spec §14.1 — create GlobalConfig, pin the USDC mint."],
+      "discriminator": [208, 127, 21, 1, 194, 190, 196, 70],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_venue_vault",
+      "docs": ["Spec §14.3 — create the venue USDC ATA owned by the VaultAuthority PDA."],
+      "discriminator": [38, 212, 71, 20, 126, 247, 62, 250],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 101, 110, 117, 101]
+              },
+              {
+                "kind": "account",
+                "path": "venue.venue_id_hash",
+                "account": "Venue"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116, 95, 97, 117, 116, 104, 111, 114, 105, 116, 121]
+              },
+              {
+                "kind": "account",
+                "path": "venue"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "venue_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28,
+                  180, 133, 237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19,
+                153, 218, 255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mark_corrected",
+      "docs": [
+        "Spec §14.5 — never delete: mark the settlement CORRECTED/DISPUTED and",
+        "store the correction reference hash."
+      ],
+      "discriminator": [89, 65, 237, 224, 106, 246, 246, 131],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 101, 110, 117, 101]
+              },
+              {
+                "kind": "account",
+                "path": "venue.venue_id_hash",
+                "account": "Venue"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 101, 116, 116, 108, 101, 109, 101, 110, 116]
+              },
+              {
+                "kind": "arg",
+                "path": "payment_id_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_payment_id_hash",
+          "type": {
+            "array": ["u8", 32]
+          }
+        },
+        {
+          "name": "correction_hash",
+          "type": {
+            "array": ["u8", 32]
+          }
+        },
+        {
+          "name": "disputed",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "pause",
+      "docs": ["Spec §14.6 — admin-only circuit breaker."],
+      "discriminator": [211, 22, 221, 251, 74, 121, 193, 47],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_venue",
+      "docs": ["Spec §14.2 — admin registers a venue; VaultAuthority PDA is derived."],
+      "discriminator": [116, 155, 199, 243, 228, 180, 176, 173],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 101, 110, 117, 101]
+              },
+              {
+                "kind": "arg",
+                "path": "venue_id_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "venue_id_hash",
+          "type": {
+            "array": ["u8", 32]
+          }
+        },
+        {
+          "name": "venue_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "settle_payout",
+      "docs": [
+        "Spec §14.4 — settle one approved worker allocation as a USDC transfer.",
+        "Duplicate payments are impossible: the SettlementRecord PDA is seeded by",
+        "payment_id_hash and `init` fails if it already exists."
+      ],
+      "discriminator": [245, 141, 29, 81, 209, 73, 180, 155],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 101, 110, 117, 101]
+              },
+              {
+                "kind": "account",
+                "path": "venue.venue_id_hash",
+                "account": "Venue"
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue_authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116, 95, 97, 117, 116, 104, 111, 114, 105, 116, 121]
+              },
+              {
+                "kind": "account",
+                "path": "venue"
+              }
+            ]
+          }
+        },
+        {
+          "name": "venue_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28,
+                  180, 133, 237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19,
+                153, 218, 255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "worker_wallet"
+        },
+        {
+          "name": "worker_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "worker_wallet"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28,
+                  180, 133, 237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19,
+                153, 218, 255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89
+              ]
+            }
+          }
+        },
+        {
+          "name": "settlement_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [115, 101, 116, 116, 108, 101, 109, 101, 110, 116]
+              },
+              {
+                "kind": "arg",
+                "path": "payment_id_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "payment_id_hash",
+          "type": {
+            "array": ["u8", 32]
+          }
+        },
+        {
+          "name": "allocation_hash",
+          "type": {
+            "array": ["u8", 32]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unpause",
+      "discriminator": [169, 144, 4, 38, 10, 141, 188, 255],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [99, 111, 110, 102, 105, 103]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GlobalConfig",
+      "discriminator": [149, 8, 156, 202, 160, 252, 176, 217]
+    },
+    {
+      "name": "SettlementRecord",
+      "discriminator": [172, 159, 67, 74, 96, 85, 37, 205]
+    },
+    {
+      "name": "Venue",
+      "discriminator": [8, 155, 85, 226, 234, 173, 42, 242]
+    }
+  ],
+  "events": [
+    {
+      "name": "PayoutSettled",
+      "discriminator": [17, 47, 89, 192, 158, 89, 180, 5]
+    },
+    {
+      "name": "ProgramPaused",
+      "discriminator": [247, 9, 236, 38, 105, 35, 112, 115]
+    },
+    {
+      "name": "SettlementCorrected",
+      "discriminator": [82, 127, 238, 194, 180, 63, 214, 23]
+    },
+    {
+      "name": "VaultInitialized",
+      "discriminator": [180, 43, 207, 2, 18, 71, 3, 75]
+    },
+    {
+      "name": "VenueRegistered",
+      "discriminator": [86, 82, 191, 91, 171, 241, 178, 9]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "ProtocolPaused",
+      "msg": "Protocol is paused"
+    },
+    {
+      "code": 6001,
+      "name": "VenueInactive",
+      "msg": "Venue is not active"
+    },
+    {
+      "code": 6002,
+      "name": "Unauthorized",
+      "msg": "Unauthorized signer"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidMint",
+      "msg": "Mint does not match protocol USDC mint"
+    },
+    {
+      "code": 6004,
+      "name": "InsufficientVaultBalance",
+      "msg": "Vault balance is insufficient"
+    },
+    {
+      "code": 6005,
+      "name": "ZeroAllocationHash",
+      "msg": "Allocation hash must not be zero"
+    },
+    {
+      "code": 6006,
+      "name": "ZeroAmount",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6007,
+      "name": "VenueMismatch",
+      "msg": "Settlement record does not belong to this venue"
+    }
+  ],
+  "types": [
+    {
+      "name": "GlobalConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayoutSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_id_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "allocation_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "venue",
+            "type": "pubkey"
+          },
+          {
+            "name": "worker_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProgramPaused",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementCorrected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_id_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "correction_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "disputed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_id_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "allocation_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "venue",
+            "type": "pubkey"
+          },
+          {
+            "name": "worker_wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "correction_reference",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "venue",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Venue",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "venue_id_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "venue_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "active",
+            "type": "bool"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VenueRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "venue",
+            "type": "pubkey"
+          },
+          {
+            "name": "venue_id_hash",
+            "type": {
+              "array": ["u8", 32]
+            }
+          },
+          {
+            "name": "venue_authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ]
+}

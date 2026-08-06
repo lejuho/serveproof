@@ -1,0 +1,686 @@
+// ServeProof database schema — spec §9 core data models.
+//
+// Money convention: all USD amounts are stored as integer cents (Int, suffix
+// `UsdCents`) to avoid float drift; conversion helpers live in @serveproof/shared.
+// On-chain USDC amounts (6 decimals) are stored as BigInt base units.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Auth & Tenancy ──────────────────────────────────────────────────────────
+
+enum GlobalRole {
+  WORKER
+  VENUE_OWNER
+  VENUE_MANAGER
+  PAYROLL_ADMIN
+  VIEWER
+}
+
+enum OrgRole {
+  OWNER
+  MANAGER
+  PAYROLL_ADMIN
+  VIEWER
+}
+
+model User {
+  id          String     @id @default(uuid())
+  authUserId  String     @unique
+  email       String     @unique
+  displayName String
+  role        GlobalRole @default(WORKER)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  worker        Worker?
+  memberships   OrganizationMember[]
+  refreshTokens RefreshToken[]
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id          String             @id @default(uuid())
+  legalName   String
+  displayName String
+  status      OrganizationStatus @default(ACTIVE)
+  country     String
+  timezone    String
+  createdAt   DateTime           @default(now())
+
+  members OrganizationMember[]
+  venues  Venue[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+enum VenueStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Venue {
+  id             String      @id @default(uuid())
+  organizationId String
+  name           String
+  timezone       String
+  status         VenueStatus @default(ACTIVE)
+  // provider key -> external venue id (e.g. { "square_sandbox": "L123", "csv": "venue_001" })
+  externalIds    Json        @default("{}")
+
+  // On-chain references — populated in Phase 2 (spec §13)
+  solanaVenuePda     String?
+  vaultTokenAccount  String?
+  payoutSignerWallet String?
+
+  createdAt DateTime @default(now())
+
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  externalWorkers    ExternalWorkerAccount[]
+  tipEvidences       TipEvidence[]
+  shiftEvidences     ShiftEvidence[]
+  allocationPolicies AllocationPolicy[]
+  allocationBatches  AllocationBatch[]
+  payouts            Payout[]
+  payrollRecords     PayrollRecord[]
+  incomeEntries      IncomeEntry[]
+  providerConnections ProviderConnection[]
+
+  @@index([organizationId])
+}
+
+enum ProviderConnectionStatus {
+  PENDING
+  CONNECTED
+  ERROR
+  REVOKED
+}
+
+/// Seller-scoped provider credentials and operational sync state. Token fields
+/// contain AES-256-GCM ciphertext only; plaintext credentials never reach DB.
+model ProviderConnection {
+  id                    String                   @id @default(uuid())
+  venueId               String
+  provider              String
+  environment           String
+  status                ProviderConnectionStatus @default(PENDING)
+  merchantId            String?
+  locationId            String?
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+  oauthStateHash        String?
+  oauthStateExpiresAt   DateTime?
+  lastSyncStartedAt     DateTime?
+  lastSyncSucceededAt   DateTime?
+  lastSyncFailedAt      DateTime?
+  lastError             String?
+  consecutiveFailures   Int                      @default(0)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@unique([venueId, provider])
+  @@index([provider, status])
+}
+
+// ── Worker Identity ─────────────────────────────────────────────────────────
+
+enum WorkerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum WorkerVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+}
+
+model Worker {
+  id                 String                   @id @default(uuid())
+  userId             String                   @unique
+  status             WorkerStatus             @default(ACTIVE)
+  defaultWalletId    String?                  @unique
+  verificationStatus WorkerVerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime                 @default(now())
+
+  user             User                    @relation(fields: [userId], references: [id])
+  defaultWallet    WorkerWallet?           @relation("DefaultWallet", fields: [defaultWalletId], references: [id])
+  wallets          WorkerWallet[]
+  externalAccounts ExternalWorkerAccount[]
+  allocations      WorkerAllocation[]
+  payouts          Payout[]
+  payrollRecords   PayrollRecord[]
+  incomeEntries    IncomeEntry[]
+  disclosureGrants DisclosureGrant[]
+  reports          VerificationReport[]
+}
+
+enum MappingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+model ExternalWorkerAccount {
+  id               String        @id @default(uuid())
+  workerId         String
+  venueId          String
+  provider         String
+  externalWorkerId String
+  mappingStatus    MappingStatus @default(PENDING)
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  createdAt        DateTime      @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id])
+  venue  Venue  @relation(fields: [venueId], references: [id])
+
+  @@unique([venueId, provider, externalWorkerId])
+  @@index([workerId])
+}
+
+enum WalletType {
+  EXTERNAL
+  EMBEDDED
+}
+
+enum WalletStatus {
+  ACTIVE
+  DISABLED
+}
+
+model WorkerWallet {
+  id         String       @id @default(uuid())
+  workerId   String
+  chain      String       @default("solana")
+  address    String
+  walletType WalletType   @default(EXTERNAL)
+  status     WalletStatus @default(ACTIVE)
+  isDefault  Boolean      @default(false)
+  linkedAt   DateTime     @default(now())
+
+  worker           Worker   @relation(fields: [workerId], references: [id])
+  defaultForWorker Worker?  @relation("DefaultWallet")
+  payouts          Payout[]
+
+  @@unique([workerId, chain, address])
+  @@index([workerId])
+}
+
+// ── Evidence ────────────────────────────────────────────────────────────────
+
+enum TipType {
+  CASH_TIP
+  CARD_TIP
+  QR_TIP
+  AUTOMATIC_GRATUITY
+  SERVICE_CHARGE
+}
+
+enum PaymentStatus {
+  COMPLETED
+  PENDING
+  CANCELED
+}
+
+enum RefundStatus {
+  NONE
+  PARTIAL
+  FULL
+}
+
+model TipEvidence {
+  id                String        @id @default(uuid())
+  provider          String
+  venueId           String
+  externalPaymentId String
+  externalOrderId   String?
+  tipType           TipType
+  grossAmountUsdCents Int
+  paymentStatus     PaymentStatus @default(COMPLETED)
+  refundStatus      RefundStatus  @default(NONE)
+  businessDate      String // YYYY-MM-DD in venue timezone
+  sourcePayloadUri  String?
+  sourceHash        String
+  observedAt        DateTime      @default(now())
+
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@unique([venueId, provider, externalPaymentId, tipType])
+  @@index([venueId, businessDate])
+}
+
+enum ShiftStatus {
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+  VOIDED
+}
+
+model ShiftEvidence {
+  id               String      @id @default(uuid())
+  provider         String
+  venueId          String
+  externalShiftId  String
+  externalWorkerId String
+  mappedWorkerId   String?
+  role             String
+  clockIn          DateTime
+  clockOut         DateTime?
+  workedMinutes    Int         @default(0)
+  shiftStatus      ShiftStatus @default(COMPLETED)
+  businessDate     String // YYYY-MM-DD in venue timezone
+  sourceHash       String
+  observedAt       DateTime    @default(now())
+
+  venue         Venue         @relation(fields: [venueId], references: [id])
+  incomeEntries IncomeEntry[]
+
+  @@unique([venueId, provider, externalShiftId])
+  @@index([venueId, businessDate])
+  @@index([mappedWorkerId])
+}
+
+// ── Allocation ──────────────────────────────────────────────────────────────
+
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum AllocationType {
+  HOURS_WEIGHTED
+  ROLE_WEIGHTED_HOURS
+  EQUAL_SPLIT
+}
+
+model AllocationPolicy {
+  id             String         @id @default(uuid())
+  venueId        String
+  version        Int
+  status         PolicyStatus   @default(DRAFT)
+  allocationType AllocationType @default(ROLE_WEIGHTED_HOURS)
+  // { "SERVER": 1.0, "BUSSER": 0.7, ... }
+  roleWeights    Json           @default("{}")
+  tipOutRules    Json           @default("[]")
+  // which tip types join the pool: { "CARD_TIP": true, "CASH_TIP": false, ... }
+  poolInclusion  Json           @default("{}")
+  excludedRoles  Json           @default("[]")
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  createdBy      String
+  createdAt      DateTime       @default(now())
+
+  venue   Venue             @relation(fields: [venueId], references: [id])
+  batches AllocationBatch[]
+
+  @@unique([venueId, version])
+}
+
+enum AllocationBatchStatus {
+  DRAFT
+  CALCULATED
+  REVIEW_REQUIRED
+  APPROVED
+  PAYABLE
+  PARTIALLY_PAID
+  PAID
+  CORRECTED
+  REVERSED
+  DISPUTED
+}
+
+model AllocationBatch {
+  id                  String                @id @default(uuid())
+  venueId             String
+  businessDate        String // YYYY-MM-DD in venue timezone
+  tipPoolAmountUsdCents Int                 @default(0)
+  policyId            String
+  policyVersion       Int
+  status              AllocationBatchStatus @default(DRAFT)
+  evidenceHash        String?
+  allocationHash      String?
+  reviewIssues        Json                  @default("[]")
+  calculatedAt        DateTime?
+  approvedAt          DateTime?
+  approvedBy          String?
+  createdAt           DateTime              @default(now())
+
+  venue       Venue              @relation(fields: [venueId], references: [id])
+  policy      AllocationPolicy   @relation(fields: [policyId], references: [id])
+  allocations WorkerAllocation[]
+
+  @@unique([venueId, businessDate, policyVersion])
+  @@index([venueId, status])
+}
+
+enum WorkerPayoutRail {
+  CASH_RETAINED
+  CASH_DRAWER
+  PAYROLL
+  PAYOUT_PROVIDER
+  BANK_REFERENCE
+  USDC
+}
+
+enum WorkerAllocationPayoutStatus {
+  UNPAID
+  PENDING
+  PAID
+  FAILED
+}
+
+model WorkerAllocation {
+  id                  String                       @id @default(uuid())
+  batchId             String
+  workerId            String
+  grossTipUsdCents    Int                          @default(0)
+  pooledTipUsdCents   Int                          @default(0)
+  tipOutGivenUsdCents Int                          @default(0)
+  tipOutReceivedUsdCents Int                       @default(0)
+  netAllocatedUsdCents Int                         @default(0)
+  payoutRail          WorkerPayoutRail?
+  payoutStatus        WorkerAllocationPayoutStatus @default(UNPAID)
+
+  batch   AllocationBatch @relation(fields: [batchId], references: [id])
+  worker  Worker          @relation(fields: [workerId], references: [id])
+  payouts Payout[]
+
+  @@unique([batchId, workerId])
+  @@index([workerId])
+}
+
+// ── Settlement ──────────────────────────────────────────────────────────────
+
+enum PayoutStatus {
+  CREATED
+  INITIATED
+  SUBMITTED
+  CONFIRMED
+  FINALIZED
+  FAILED
+  REVERSED
+  CORRECTED
+}
+
+model Payout {
+  id           String  @id @default(uuid())
+  // Idempotency key — one logical payment; also hashed into the on-chain
+  // SettlementRecord PDA seed (spec §13.6, §16.1).
+  paymentId    String  @unique
+  // hex(sha256(paymentId)) — matches on-chain PDA seed and PayoutSettled events
+  paymentIdHash String? @unique
+  allocationId String
+  workerId     String
+  venueId      String
+  walletId     String?
+  rail         WorkerPayoutRail
+  asset        String // "USDC" | "USD" | ...
+  // Native asset amount in base units (USDC: 6 decimals)
+  amountBaseUnits BigInt @default(0)
+  amountUsdCents  Int
+  status       PayoutStatus @default(CREATED)
+
+  externalReference String?
+  txSignature       String?
+  settlementPda     String?
+  slot              BigInt?
+  blockTime         DateTime?
+  initiatedAt       DateTime?
+  settledAt         DateTime?
+  failedReason      String?
+  createdAt         DateTime  @default(now())
+
+  allocation WorkerAllocation @relation(fields: [allocationId], references: [id])
+  worker     Worker           @relation(fields: [workerId], references: [id])
+  venue      Venue            @relation(fields: [venueId], references: [id])
+  wallet     WorkerWallet?    @relation(fields: [walletId], references: [id])
+  incomeEntries IncomeEntry[]
+
+  @@index([venueId, status])
+  @@index([workerId])
+}
+
+// ── Payroll Observability ───────────────────────────────────────────────────
+
+enum PayrollRecordStatus {
+  PENDING
+  PROVIDER_CONFIRMED
+  DISPUTED
+}
+
+model PayrollRecord {
+  id                     String              @id @default(uuid())
+  workerId               String
+  venueId                String
+  periodStart            DateTime
+  periodEnd              DateTime
+  reportedTipUsdCents    Int                 @default(0)
+  federalWithholdingUsdCents Int?
+  stateWithholdingUsdCents   Int?
+  socialSecurityUsdCents     Int?
+  medicareUsdCents           Int?
+  status                 PayrollRecordStatus @default(PENDING)
+  providerReference      String?
+  createdAt              DateTime            @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id])
+  venue  Venue  @relation(fields: [venueId], references: [id])
+
+  @@index([workerId, periodStart])
+  @@index([venueId])
+}
+
+// ── Income Ledger (spec §17, §19) ───────────────────────────────────────────
+
+enum WithholdingStatus {
+  UNKNOWN
+  PENDING
+  CONFIRMED
+}
+
+enum EvidenceGrade {
+  A
+  B
+  C
+  D
+  E
+}
+
+enum IncomeEntryEffectiveStatus {
+  ACTIVE
+  SUPERSEDED
+  REVERSED
+}
+
+model IncomeEntry {
+  id                    String            @id @default(uuid())
+  workerId              String
+  venueId               String
+  shiftId               String?
+  payoutId              String?
+  earnedUsdCents        Int               @default(0)
+  allocatedUsdCents     Int               @default(0)
+  paidUsdCents          Int               @default(0)
+  payrollReportedUsdCents Int             @default(0)
+  withholdingStatus     WithholdingStatus @default(UNKNOWN)
+  payoutRail            WorkerPayoutRail?
+  evidenceGrade         EvidenceGrade     @default(E)
+  effectiveStatus       IncomeEntryEffectiveStatus @default(ACTIVE)
+
+  // Correction ledger — originals are never deleted (spec §19)
+  originalEntryId String?
+  correctionOfId  String?
+  correctionReason String?
+
+  createdAt DateTime @default(now())
+
+  worker       Worker         @relation(fields: [workerId], references: [id])
+  venue        Venue          @relation(fields: [venueId], references: [id])
+  shift        ShiftEvidence? @relation(fields: [shiftId], references: [id])
+  payout       Payout?        @relation(fields: [payoutId], references: [id])
+  correctionOf IncomeEntry?   @relation("Correction", fields: [correctionOfId], references: [id])
+  corrections  IncomeEntry[]  @relation("Correction")
+
+  @@index([workerId, createdAt])
+  @@index([venueId])
+}
+
+enum DiscrepancyType {
+  ALLOCATION_GAP
+  PAYOUT_GAP
+  PAYROLL_GAP
+  WITHHOLDING_UNKNOWN
+  REFUND_ADJUSTMENT_REQUIRED
+  DUPLICATE_EVIDENCE
+  UNMAPPED_WORKER
+  STALE_PROVIDER_DATA
+}
+
+model DiscrepancyAlert {
+  id         String          @id @default(uuid())
+  workerId   String?
+  venueId    String
+  shiftId    String?
+  type       DiscrepancyType
+  detail     Json            @default("{}")
+  resolvedAt DateTime?
+  createdAt  DateTime        @default(now())
+
+  @@index([workerId])
+  @@index([venueId, type])
+}
+
+// ── Selective Disclosure (spec §20, §21) ────────────────────────────────────
+
+enum DisclosureLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+model DisclosureGrant {
+  id              String          @id @default(uuid())
+  workerId        String
+  recipientEmail  String?
+  purpose         String
+  level           DisclosureLevel @default(LEVEL_2)
+  fieldScope      Json            @default("[]")
+  venueScope      Json            @default("[]")
+  dateRangeStart  DateTime
+  dateRangeEnd    DateTime
+  expiresAt       DateTime
+  allowDownload   Boolean         @default(false)
+  revokedAt       DateTime?
+  // raw token is only ever returned to the worker; DB stores the hash (spec §29.8)
+  accessTokenHash String          @unique
+  createdAt       DateTime        @default(now())
+
+  worker  Worker               @relation(fields: [workerId], references: [id])
+  reports VerificationReport[]
+  accesses DisclosureAccessLog[]
+
+  @@index([workerId])
+}
+
+model DisclosureAccessLog {
+  id         String   @id @default(uuid())
+  grantId    String
+  ip         String?
+  userAgent  String?
+  accessedAt DateTime @default(now())
+
+  grant DisclosureGrant @relation(fields: [grantId], references: [id])
+
+  @@index([grantId, accessedAt])
+}
+
+enum ReportStatus {
+  DRAFT
+  ISSUED
+  EXPIRED
+  CORRECTED
+  REVOKED
+}
+
+model VerificationReport {
+  id                String       @id @default(uuid())
+  workerId          String
+  disclosureGrantId String
+  reportHash        String
+  reportUri         String? // private object storage key — never a public URL
+  // Immutable content snapshot at issuance — the verify page renders this,
+  // never live data (spec §21.2: report hash match)
+  snapshot          Json         @default("{}")
+  status            ReportStatus @default(DRAFT)
+  issuedAt          DateTime?
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  previousReportId  String?      @unique
+  onchainRecordReference String?
+  createdAt         DateTime     @default(now())
+
+  worker         Worker              @relation(fields: [workerId], references: [id])
+  grant          DisclosureGrant     @relation(fields: [disclosureGrantId], references: [id])
+  previousReport VerificationReport? @relation("ReportChain", fields: [previousReportId], references: [id])
+  nextReport     VerificationReport? @relation("ReportChain")
+
+  @@index([workerId])
+}
+
+// ── Auth tokens (spec §24 — refresh token rotation) ─────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ── Audit (spec §24) ────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String?
+  venueId        String?
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String?
+  detail         Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}

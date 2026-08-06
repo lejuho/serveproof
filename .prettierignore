@@ -1,0 +1,8 @@
+node_modules
+dist
+.next
+target
+pnpm-lock.yaml
+coverage
+.anchor
+ServeProof_MVP_Implementation_Spec_v2.md

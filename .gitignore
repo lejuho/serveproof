@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+.next/
+out/
+target/
+*.tsbuildinfo
+
+# env & secrets — never commit
+.env
+.env.*
+!.env.example
+*.keypair.json
+keypairs/
+id.json
+
+# prisma
+packages/db/prisma/*.db
+
+# local private report storage (stand-in for object storage bucket)
+var/
+
+# logs
+*.log
+npm-debug.log*
+
+# editor/os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# anchor
+.anchor/

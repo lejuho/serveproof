@@ -1,0 +1,31 @@
+{
+  "name": "@serveproof/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start:worker": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "test": "echo \"no tests yet\""
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.1.28",
+    "@serveproof/db": "workspace:*",
+    "@serveproof/providers": "workspace:*",
+    "@serveproof/shared": "workspace:*",
+    "@serveproof/solana": "workspace:*",
+    "@solana/web3.js": "^1.98.4",
+    "bullmq": "^5.81.3",
+    "ioredis": "^5.4.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.24",
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3"
+  }
+}
