@@ -339,7 +339,6 @@ Migration은 API 서비스의 pre-deploy에서만 실행해 API와 worker가 동
 ```dotenv
 NODE_ENV=production
 APP_ENV=local
-API_PORT=3001
 DATABASE_URL=<Railway PostgreSQL reference>
 REDIS_URL=<Railway Redis reference>
 AUTH_SECRET=<strong random secret>
@@ -358,6 +357,8 @@ SQUARE_APP_SECRET=...
 SQUARE_ACCESS_TOKEN=...
 SQUARE_REDIRECT_URI=https://<railway-api-domain>/providers/square/callback
 ```
+
+Railway가 런타임 `PORT`를 자동 주입하므로 배포 환경에 `API_PORT`를 별도로 고정하지 않습니다. API는 `PORT`를 우선 사용하고, 로컬에서만 `API_PORT=3001`을 사용합니다.
 
 `APP_ENV=local`은 이메일 provider 없이 OTP를 화면에 표시하기 위한 **임시 공개 데모 설정**입니다. OTP가 API 응답에 포함되므로 접근 기간과 대상을 제한하세요. 실제 staging/production에서는 이메일 provider를 구현한 뒤 `APP_ENV=staging` 또는 `production`으로 바꿔야 합니다.
 
