@@ -4,6 +4,17 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 
 > 이 저장소는 캡스톤/MVP 데모용입니다. Solana Devnet의 `tUSDC`는 실제 가치가 없으며, 현재 이메일 발송과 영구 PDF object storage는 운영 수준으로 연결되어 있지 않습니다.
 
+## 현재 구현 상태
+
+> 코드·CI·테스트 기준 최종 점검: 2026-08-07
+
+- Phase 1~4: CSV 기반 도메인 흐름, Devnet 정산, 소득 관측, 선택 공개 기능 구현 완료
+- Phase 5: Square OAuth·암호화 token 저장·evidence sync·provider health 구현 및 단위 테스트 완료
+- Phase 5 acceptance: Sandbox API 200 응답은 확인했지만 fixture가 0건이어서 실제 OAuth callback과 tip·Timecard 수집 검증은 남아 있음
+- Phase 6: 로컬 데모 자동화와 핵심 Supertest 시나리오는 완료, Playwright 24단계와 staging 배포는 미완료
+
+다음 작업 순서는 **Square Sandbox fixture/live sync 검증 → Playwright 24단계 → staging 배포와 smoke test**입니다. 세부 체크리스트는 [구현 계획](IMPLEMENTATION_PLAN.md), 파일별 책임은 [코드베이스 맵](ARCHITECTURE.md)을 기준으로 합니다.
+
 ## 주요 기능
 
 - 이메일 OTP 로그인, JWT access token, refresh token rotation 및 재사용 차단
@@ -55,6 +66,7 @@ serveproof/
 │  ├─ providers/    # EvidenceProvider 인터페이스, Square client, token 암호화
 │  └─ solana/       # Anchor IDL client, PDA 파생, unsigned transaction builder
 ├─ onchain/         # Anchor 프로그램, 테스트, Devnet 초기화/스모크 스크립트
+├─ scripts/         # 로컬 데모 setup/start/stop 및 포트 사전 검사
 ├─ fixtures/csv/    # 데모용 팁·시프트 CSV
 ├─ var/reports/     # 로컬 생성 PDF; gitignore 대상
 ├─ docker-compose.yml
@@ -75,6 +87,34 @@ serveproof/
 | Test/CI    | node:test, Jest, Supertest, GitHub Actions, gitleaks |
 
 ## 로컬 실행
+
+### 빠른 데모 실행
+
+최초 한 번만 setup을 실행한 뒤 API·Worker·Web을 한 명령으로 시작할 수 있습니다.
+
+```bash
+cd /home/user/serveproof
+pnpm demo:setup
+pnpm demo:start
+```
+
+`demo:setup`은 다음 작업을 순서대로 수행합니다.
+
+- `.env`가 없으면 `.env.example`에서 생성
+- 비어 있는 `AUTH_SECRET`, `REPORT_SIGNING_KEY`, `PROVIDER_ENCRYPTION_KEY` 생성
+- workspace 의존성 설치
+- PostgreSQL·Redis 기동 및 readiness 대기
+- Prisma migration 적용과 멱등 demo seed 실행
+
+`demo:start`는 API, worker, web을 함께 실행합니다. `Ctrl+C`는 애플리케이션 프로세스를 함께 종료하지만 PostgreSQL과 Redis는 다음 실행을 위해 유지합니다. 컨테이너도 중지하려면 실행하세요.
+
+시작 전에 Web `3000`과 API `API_PORT`(기본 `3001`)가 비어 있는지 검사합니다. Web 포트는 `3000`으로 고정하므로 다른 프로세스 때문에 Next.js가 API 포트로 자동 이동하지 않습니다.
+
+```bash
+pnpm demo:stop
+```
+
+기존 `.env` 값과 PostgreSQL volume은 세 명령 모두 덮어쓰거나 삭제하지 않습니다.
 
 ### 1. 준비물
 
@@ -240,6 +280,10 @@ anchor test
 
 ## 테스트와 품질 검사
 
+최근 확인 결과(2026-08-06): shared 단위 테스트 11/11, Square provider 단위 테스트 3/3,
+API Supertest 3/3, 전체 workspace typecheck 7개·build·lint 통과. Anchor local validator는 Phase 2에서
+14/14 통과했습니다.
+
 ```bash
 pnpm lint
 pnpm typecheck
@@ -256,7 +300,7 @@ DATABASE_URL=postgresql://serveproof:serveproof@localhost:5433/serveproof_test \
 pnpm test
 ```
 
-CI는 PostgreSQL·Redis service container를 기동한 뒤 migration, lint, build, typecheck, 단위/API 통합 테스트와 secret scan을 수행합니다.
+CI는 PostgreSQL·Redis service container를 기동한 뒤 migration, lint, build, typecheck, 단위/API 통합 테스트와 secret scan을 수행합니다. Anchor build/test job은 아직 CI에 포함되지 않습니다.
 
 ## 데모 배포
 

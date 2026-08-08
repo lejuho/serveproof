@@ -16,7 +16,10 @@
     "db:migrate": "pnpm --filter @serveproof/db migrate:dev",
     "dev:web": "pnpm --filter @serveproof/web dev",
     "dev:api": "pnpm --filter @serveproof/api start:dev",
-    "dev:worker": "pnpm --filter @serveproof/worker start:dev"
+    "dev:worker": "pnpm --filter @serveproof/worker start:dev",
+    "demo:setup": "bash scripts/demo-setup.sh",
+    "demo:start": "bash scripts/demo-start.sh",
+    "demo:stop": "bash scripts/demo-stop.sh"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

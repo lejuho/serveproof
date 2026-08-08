@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans:
+    var(--font-inter), var(--font-noto-kr), "Apple SD Gothic Neo", "Malgun Gothic", system-ui,
+    sans-serif;
+}
+
+::selection {
+  background: rgb(5 150 105 / 0.18);
+}
+
+html {
+  scroll-behavior: smooth;
+}

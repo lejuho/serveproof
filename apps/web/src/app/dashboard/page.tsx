@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError, clearTokens, getToken } from "@/lib/api";
-import { signTransactionBase64 } from "@/lib/wallet";
+import { connectWallet, signTransactionBase64 } from "@/lib/wallet";
+import { useI18n } from "@/lib/i18n";
+import {
+  AppShell,
+  Badge,
+  Button,
+  Callout,
+  Card,
+  inputClass,
+  tableCellClass,
+  tableHeadClass,
+} from "@/components/ui";
 
 interface Venue {
   id: string;
@@ -58,19 +69,8 @@ function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  CALCULATED: "bg-blue-100 text-blue-800",
-  REVIEW_REQUIRED: "bg-amber-100 text-amber-800",
-  PAYABLE: "bg-green-100 text-green-800",
-  PARTIALLY_PAID: "bg-emerald-100 text-emerald-800",
-  PAID: "bg-emerald-200 text-emerald-900",
-  DRAFT: "bg-zinc-100 text-zinc-600",
-  UNPAID: "bg-zinc-100 text-zinc-600",
-  PENDING: "bg-blue-100 text-blue-800",
-  FAILED: "bg-red-100 text-red-700",
-};
-
 export default function DashboardPage() {
+  const { locale, t } = useI18n();
   const router = useRouter();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [venueId, setVenueId] = useState<string>("");
@@ -80,7 +80,12 @@ export default function DashboardPage() {
   const [businessDate, setBusinessDate] = useState("2026-08-05");
   const [batch, setBatch] = useState<Batch | null>(null);
   const [payoutProgress, setPayoutProgress] = useState<Record<string, string>>({});
-  const [rebuildResult, setRebuildResult] = useState<string | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<{
+    entriesUpserted: number;
+    alerts: number;
+  } | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [venueSigner, setVenueSigner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -120,7 +125,17 @@ export default function DashboardPage() {
     setBatch(null);
     setImportResult(null);
     setRebuildResult(null);
-  }, [venueId, refreshUnmapped]);
+    if (venueId) {
+      api<{ payoutSignerWallet: string | null }>(`/venues/${venueId}`)
+        .then((venue) => setVenueSigner(venue.payoutSignerWallet))
+        .catch(guard);
+    }
+  }, [venueId, refreshUnmapped, guard]);
+
+  const connect = () =>
+    run(async () => {
+      setWalletAddress(await connectWallet());
+    });
 
   async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
@@ -179,18 +194,18 @@ export default function DashboardPage() {
   /** Spec §29.4 flow: create → unsigned tx → wallet signs → submit → poll. */
   const payUsdc = (allocationId: string) =>
     run(async () => {
-      setProgress(allocationId, "payout 생성 중…");
+      setProgress(allocationId, t("dash.progress.create"));
       const payout = await api<Payout>("/payouts", { method: "POST", body: { allocationId } });
 
-      setProgress(allocationId, "트랜잭션 생성 중…");
+      setProgress(allocationId, t("dash.progress.build"));
       const tx = await api<{ transactionBase64: string; signer: string }>(
         `/payouts/${payout.id}/transaction`,
       );
 
-      setProgress(allocationId, "지갑 서명 대기…");
+      setProgress(allocationId, t("dash.progress.sign"));
       const signed = await signTransactionBase64(tx.transactionBase64, tx.signer);
 
-      setProgress(allocationId, "제출 중…");
+      setProgress(allocationId, t("dash.progress.submit"));
       await api(`/payouts/${payout.id}/submit`, {
         method: "POST",
         body: { signedTransactionBase64: signed },
@@ -198,7 +213,7 @@ export default function DashboardPage() {
 
       for (let i = 0; i < 30; i++) {
         const current = await api<Payout>(`/payouts/${payout.id}`);
-        setProgress(allocationId, `온체인 ${current.status}`);
+        setProgress(allocationId, `${t("dash.progress.onchain")} ${current.status}`);
         if (["FINALIZED", "FAILED"].includes(current.status)) break;
         await new Promise((r) => setTimeout(r, 3000));
       }
@@ -207,13 +222,13 @@ export default function DashboardPage() {
 
   const payLegacy = (allocationId: string) =>
     run(async () => {
-      const reference = window.prompt("지급 증빙 reference (예: payroll run ID)");
+      const reference = window.prompt(t("dash.payout.prompt"));
       if (!reference) return;
       await api("/payouts/legacy-evidence", {
         method: "POST",
         body: { allocationId, rail: "PAYROLL", externalReference: reference },
       });
-      setProgress(allocationId, "legacy 증빙 등록됨 (PAYROLL)");
+      setProgress(allocationId, t("dash.progress.legacyDone"));
       await refreshBatch();
     });
 
@@ -223,201 +238,253 @@ export default function DashboardPage() {
         `/venues/${venueId}/income/rebuild`,
         { method: "POST", body: {} },
       );
-      setRebuildResult(
-        `IncomeEntry ${result.entriesUpserted}건 재계산, discrepancy 경고 ${result.alerts}건`,
-      );
+      setRebuildResult(result);
     });
 
   const payable = batch && ["PAYABLE", "PARTIALLY_PAID", "PAID"].includes(batch.status);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Venue Dashboard</h1>
-        <button
-          onClick={() => {
-            clearTokens();
-            router.push("/login");
-          }}
-          className="text-sm text-zinc-500 underline"
-        >
-          로그아웃
-        </button>
-      </header>
+    <AppShell
+      wide
+      title="Venue Dashboard"
+      subtitle={t("dash.subtitle")}
+      right={
+        <>
+          <select
+            className="max-w-64 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm outline-none focus:border-emerald-500"
+            value={venueId}
+            onChange={(e) => setVenueId(e.target.value)}
+          >
+            {orgs.flatMap((org) =>
+              org.venues.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {org.displayName} — {v.name}
+                </option>
+              )),
+            )}
+          </select>
+          <button
+            onClick={() => {
+              clearTokens();
+              router.push("/login");
+            }}
+            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+          >
+            {t("logout")}
+          </button>
+        </>
+      }
+    >
+      {error && <Callout tone="red">{error}</Callout>}
 
-      {error && <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      {/* Venue picker */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">사업장</h2>
-        <select
-          className="w-full rounded-md border border-zinc-300 px-3 py-2"
-          value={venueId}
-          onChange={(e) => setVenueId(e.target.value)}
-        >
-          {orgs.flatMap((org) =>
-            org.venues.map((v) => (
-              <option key={v.id} value={v.id}>
-                {org.displayName} — {v.name}
-              </option>
-            )),
-          )}
-        </select>
-      </section>
-
-      {/* CSV import */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">1. CSV Import</h2>
+      <Card step={1} title="CSV Import" description={t("dash.csv.desc")}>
         <textarea
-          className="h-28 w-full rounded-md border border-zinc-300 p-2 font-mono text-xs"
+          className={`${inputClass} h-32 font-mono text-xs leading-relaxed`}
           placeholder="provider,venue_external_id,worker_external_id,..."
           value={csvText}
           onChange={(e) => setCsvText(e.target.value)}
         />
-        <button
-          onClick={importCsv}
-          disabled={busy || !csvText || !venueId}
-          className="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-        >
-          Import
-        </button>
-        {importResult && (
-          <p className="mt-2 text-sm text-zinc-600">
-            팁 {importResult.tipsUpserted}건, 시프트 {importResult.shiftsUpserted}건 (매핑{" "}
-            {importResult.mappedShifts} / 미매핑 {importResult.unmappedShifts})
-          </p>
-        )}
-      </section>
+        <div className="mt-3 flex items-center gap-4">
+          <Button variant="dark" onClick={importCsv} disabled={busy || !csvText || !venueId}>
+            Import
+          </Button>
+          {importResult && (
+            <p className="text-sm text-zinc-500">
+              {locale === "ko" ? (
+                <>
+                  팁 <b className="text-zinc-800">{importResult.tipsUpserted}건</b>, 시프트{" "}
+                  <b className="text-zinc-800">{importResult.shiftsUpserted}건</b> (매핑{" "}
+                  {importResult.mappedShifts} / 미매핑 {importResult.unmappedShifts})
+                  {importResult.errors.length > 0 && (
+                    <span className="text-red-600"> — 오류 {importResult.errors.length}건</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <b className="text-zinc-800">{importResult.tipsUpserted}</b> tips,{" "}
+                  <b className="text-zinc-800">{importResult.shiftsUpserted}</b> shifts (
+                  {importResult.mappedShifts} mapped / {importResult.unmappedShifts} unmapped)
+                  {importResult.errors.length > 0 && (
+                    <span className="text-red-600"> — {importResult.errors.length} errors</span>
+                  )}
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      </Card>
 
-      {/* Worker mapping */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">2. Worker Mapping</h2>
-        {unmapped && unmapped.pendingMappings.length === 0 && (
-          <p className="text-sm text-zinc-500">확인 대기 중인 매핑이 없습니다.</p>
-        )}
-        <ul className="flex flex-col gap-2">
-          {unmapped?.pendingMappings.map((m) => (
-            <li
-              key={m.id}
-              className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-2 text-sm"
-            >
-              <span>
-                <b>{m.externalWorkerId}</b> ({m.provider}) → {m.worker.user.displayName}
-              </span>
-              <button
-                onClick={() => verifyMapping(m.id)}
-                disabled={busy}
-                className="rounded-md bg-amber-600 px-3 py-1 text-white disabled:opacity-50"
+      <Card step={2} title="Worker Mapping" description={t("dash.mapping.desc")}>
+        {unmapped && unmapped.pendingMappings.length === 0 ? (
+          <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {unmapped?.pendingMappings.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
               >
-                매핑 확정
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+                <span className="text-[15px]">
+                  <b className="font-mono text-sm">{m.externalWorkerId}</b>
+                  <span className="text-zinc-400"> ({m.provider})</span>
+                  <span className="mx-2 text-zinc-400">→</span>
+                  {m.worker.user.displayName}
+                </span>
+                <Button
+                  size="sm"
+                  variant="dark"
+                  onClick={() => verifyMapping(m.id)}
+                  disabled={busy}
+                >
+                  {t("dash.mapping.confirm")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
-      {/* Allocation */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">3. 배분 계산 · 승인</h2>
-        <div className="flex items-center gap-2">
+      <Card step={3} title={t("dash.alloc.title")} description={t("dash.alloc.desc")}>
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="date"
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className={`${inputClass} w-auto`}
             value={businessDate}
             onChange={(e) => setBusinessDate(e.target.value)}
           />
-          <button
-            onClick={calculate}
-            disabled={busy || !venueId}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            계산
-          </button>
-          <button
-            onClick={approve}
-            disabled={busy || batch?.status !== "CALCULATED"}
-            className="rounded-md bg-green-700 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            승인
-          </button>
+          <Button variant="dark" onClick={calculate} disabled={busy || !venueId}>
+            {t("dash.calc")}
+          </Button>
+          <Button onClick={approve} disabled={busy || batch?.status !== "CALCULATED"}>
+            {t("dash.approve")}
+          </Button>
         </div>
 
         {batch && (
-          <div className="mt-4 flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLE[batch.status] ?? "bg-zinc-100"}`}
-              >
-                {batch.status}
+          <div className="mt-5 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
+              <Badge tone={batch.status}>{batch.status}</Badge>
+              <span className="text-sm text-zinc-500">
+                {batch.businessDate} · {t("dash.policy")} v{batch.policyVersion}
               </span>
-              <span className="text-sm text-zinc-600">
-                {batch.businessDate} · 정책 v{batch.policyVersion} · 팁 풀{" "}
-                <b>{usd(batch.tipPoolAmountUsdCents)}</b>
+              <span className="ml-auto text-sm text-zinc-500">
+                {t("dash.pool")}{" "}
+                <b className="text-lg font-bold tracking-tight text-zinc-900 tabular-nums">
+                  {usd(batch.tipPoolAmountUsdCents)}
+                </b>
               </span>
             </div>
+
             {batch.reviewIssues.length > 0 && (
-              <ul className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              <ul className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 {batch.reviewIssues.map((issue, i) => (
-                  <li key={i}>
+                  <li key={i} className="font-mono text-xs leading-relaxed">
                     {issue.blocking ? "⛔" : "ℹ️"} {issue.code} {JSON.stringify(issue.detail)}
                   </li>
                 ))}
               </ul>
             )}
+
+            {!payable && batch.allocations.length > 0 && (
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={tableHeadClass}>{t("worker")}</th>
+                    <th className={`${tableHeadClass} text-right`}>{t("amount")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batch.allocations.map((a) => (
+                    <tr key={a.id}>
+                      <td className={tableCellClass}>{a.worker.user.displayName}</td>
+                      <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                        {usd(a.netAllocatedUsdCents)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
-      </section>
+      </Card>
 
-      {/* Payouts (spec §12, §29.4 — venue wallet signs in the browser) */}
       {batch && payable && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="mb-2 font-semibold">4. 지급 (Payout)</h2>
-          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            USDC 지급은 Devnet 테스트 토큰(tUSDC)이며 화폐 가치가 없습니다. venue signer 지갑으로
-            서명해야 합니다.
-          </p>
-          <table className="w-full text-sm">
+        <Card step={4} title={t("dash.payout.title")} description={t("dash.payout.desc")}>
+          <Callout tone="amber">{t("dash.payout.callout")}</Callout>
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
+            {walletAddress ? (
+              <>
+                <Badge tone={walletAddress === venueSigner ? "CONFIRMED" : "FAILED"}>
+                  {t("dash.wallet.connected")} ·{" "}
+                  {walletAddress === venueSigner
+                    ? t("dash.wallet.match")
+                    : t("dash.wallet.mismatch")}
+                </Badge>
+                <code className="text-xs text-zinc-500">
+                  {walletAddress.slice(0, 8)}…{walletAddress.slice(-6)}
+                </code>
+              </>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={connect} disabled={busy}>
+                {t("dash.wallet.connect")}
+              </Button>
+            )}
+            {venueSigner && (
+              <span className="ml-auto text-xs text-zinc-400">
+                {t("dash.wallet.expectedSigner")}:{" "}
+                <code>
+                  {venueSigner.slice(0, 8)}…{venueSigner.slice(-6)}
+                </code>
+              </span>
+            )}
+          </div>
+          <table className="mt-4 w-full">
             <thead>
-              <tr className="border-b border-zinc-200 text-left text-zinc-500">
-                <th className="py-1">Worker</th>
-                <th className="py-1 text-right">배분액</th>
-                <th className="py-1">상태</th>
-                <th className="py-1">액션</th>
+              <tr>
+                <th className={tableHeadClass}>{t("worker")}</th>
+                <th className={`${tableHeadClass} text-right`}>{t("amount")}</th>
+                <th className={tableHeadClass}>{t("status")}</th>
+                <th className={tableHeadClass}>{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
               {batch.allocations.map((a) => (
-                <tr key={a.id} className="border-b border-zinc-100">
-                  <td className="py-2">{a.worker.user.displayName}</td>
-                  <td className="py-2 text-right font-mono">{usd(a.netAllocatedUsdCents)}</td>
-                  <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[a.payoutStatus] ?? "bg-zinc-100"}`}
-                    >
+                <tr key={a.id}>
+                  <td className={`${tableCellClass} font-medium text-zinc-900`}>
+                    {a.worker.user.displayName}
+                  </td>
+                  <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                    {usd(a.netAllocatedUsdCents)}
+                  </td>
+                  <td className={tableCellClass}>
+                    <Badge tone={a.payoutStatus}>
                       {a.payoutStatus}
                       {a.payoutRail ? ` · ${a.payoutRail}` : ""}
-                    </span>
+                    </Badge>
                     {payoutProgress[a.id] && (
-                      <span className="ml-2 text-xs text-zinc-500">{payoutProgress[a.id]}</span>
+                      <span className="ml-2 text-xs text-zinc-400">{payoutProgress[a.id]}</span>
                     )}
                   </td>
-                  <td className="py-2">
+                  <td className={tableCellClass}>
                     {a.payoutStatus !== "PAID" && (
                       <span className="flex gap-2">
-                        <button
+                        <Button
+                          size="sm"
+                          variant="violet"
                           onClick={() => payUsdc(a.id)}
                           disabled={busy}
-                          className="rounded-md bg-violet-700 px-3 py-1 text-xs text-white disabled:opacity-50"
                         >
-                          USDC 지급 (지갑 서명)
-                        </button>
-                        <button
+                          {t("dash.payout.usdc")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
                           onClick={() => payLegacy(a.id)}
                           disabled={busy}
-                          className="rounded-md bg-zinc-600 px-3 py-1 text-xs text-white disabled:opacity-50"
                         >
-                          Legacy 증빙
-                        </button>
+                          {t("dash.payout.legacy")}
+                        </Button>
                       </span>
                     )}
                   </td>
@@ -425,27 +492,27 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       )}
 
-      {/* Observability */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">5. Income Observability</h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={rebuildIncome}
-            disabled={busy || !venueId}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            IncomeEntry 재계산
-          </button>
-          {rebuildResult && <span className="text-sm text-zinc-600">{rebuildResult}</span>}
+      <Card step={5} title="Income Observability" description={t("dash.income.desc")}>
+        <div className="flex items-center gap-4">
+          <Button variant="dark" onClick={rebuildIncome} disabled={busy || !venueId}>
+            {t("dash.income.rebuild")}
+          </Button>
+          {rebuildResult && (
+            <span className="text-sm text-zinc-500">
+              {locale === "ko"
+                ? `IncomeEntry ${rebuildResult.entriesUpserted}건 재계산, discrepancy 경고 ${rebuildResult.alerts}건`
+                : `${rebuildResult.entriesUpserted} income entries rebuilt, ${rebuildResult.alerts} discrepancy alerts`}
+            </span>
+          )}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          지급·payroll 변경 후 실행하면 시프트별 earned→allocated→paid→payroll 상태와 discrepancy
-          경고가 갱신됩니다. 노동자는 <b>내 소득</b> 화면에서 자기 상태를 확인합니다.
+        <p className="mt-3 text-sm text-zinc-400">
+          {t("dash.income.note1")} <b className="text-zinc-600">{t("dash.income.myIncome")}</b>{" "}
+          {t("dash.income.note2")}
         </p>
-      </section>
-    </main>
+      </Card>
+    </AppShell>
   );
 }

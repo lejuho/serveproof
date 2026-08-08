@@ -1,9 +1,10 @@
 # ServeProof MVP 구현 계획 (Implementation Plan)
 
 > 기준 문서: [ServeProof_MVP_Implementation_Spec_v2.md](ServeProof_MVP_Implementation_Spec_v2.md)
-> 작성일: 2026-08-06
+> 최초 작성: 2026-08-06<br>
+> 최종 점검: 2026-08-07 (코드·CI·자동화 테스트 기준)
 
-이 문서는 명세서의 Phase 1~5(§27)를 기반으로, 실제 작업 순서·산출물·완료 기준을 실행 가능한 단계로 세분화한 구현 계획이다.
+이 문서는 명세서의 구현 단계를 Phase 0~6으로 확장해, 실제 작업 순서·산출물·완료 기준을 실행 가능한 단계로 세분화한 구현 계획이다.
 
 ---
 
@@ -18,6 +19,20 @@ Phase 4  Selective Disclosure (공개 grant, PDF, QR, 검증 페이지)
 Phase 5  External Integration (Square Sandbox, provider health)
 Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 ```
+
+### 현재 구현 상태
+
+| Phase                   | 상태                        | 남은 핵심 작업                                                  |
+| ----------------------- | --------------------------- | --------------------------------------------------------------- |
+| 0. 프로젝트 셋업        | 기본 완료                   | Anchor build/test CI workflow                                   |
+| 1. Domain Core          | 핵심 흐름 완료              | Google 로그인, MockToast, tip-out 로직, 정책 UI                 |
+| 2. Solana Settlement    | Devnet 기능 완료            | deploy/admin/venue authority 분리, Anchor CI                    |
+| 3. Observability        | 핵심 흐름 완료              | paid adjustment, 온체인 correction 연동, corrections UI         |
+| 4. Selective Disclosure | 기능 구현 완료              | 철회·정정 포함 전체 흐름의 Supertest/Playwright acceptance 보강 |
+| 5. Square Integration   | live acceptance 완료        | 브라우저 OAuth 승인 클릭(선택), MockToast                       |
+| 6. Deployment & Demo    | 로컬 자동화·Playwright 완료 | staging 배포, storage, dependency health, smoke test            |
+
+현재 critical path는 **staging 배포(클라우드 계정 필요) → smoke test 12단계**만 남았다.
 
 의존 관계:
 
@@ -44,9 +59,10 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
   ├─ packages/
   │  ├─ db/         # Prisma schema + client
   │  ├─ shared/     # 공통 타입, Zod 스키마, 상수
+  │  ├─ providers/  # 외부 evidence provider 인터페이스 + Square adapter
   │  └─ solana/     # Anchor IDL 기반 TS client
-  ├─ programs/
-  │  └─ serveproof/ # Anchor program (Rust)
+  ├─ onchain/       # Anchor workspace + ServeProof program + Devnet scripts
+  ├─ scripts/       # 로컬 데모 setup/start/stop
   └─ fixtures/      # CSV fixture, seed 데이터
   ```
 - [x] TypeScript, Prettier, tsconfig 공통 설정
@@ -62,7 +78,7 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 ### 0.3 CI 기본 골격
 
 - [x] GitHub Actions: PR 시 lint → typecheck → build → unit test
-- [x] Anchor build job은 Phase 2에서 별도 workflow로 추가 (§29.10 원칙)
+- [ ] Anchor build/test job을 별도 workflow로 추가 (§29.10 원칙) — 현재 CI에는 안내 주석만 존재
 - [x] secret 미커밋 검사 (gitleaks)
 
 **완료 기준**: 로컬에서 `web/api/worker` 빈 앱이 각각 기동되고, CI가 PR에서 통과한다.
@@ -110,13 +126,14 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 
 ### 1.5 Evidence Adapter — 공통 인터페이스 + CSV (§7, §8)
 
-- [ ] `EvidenceProvider`, `PayrollProvider`, `SettlementProvider` 인터페이스 정의 — Square/Mock 어댑터 추가 시(Phase 5) 도입
+- [x] `EvidenceProvider` 인터페이스 정의 (`packages/providers`) + Square adapter 구현
+- [ ] `PayrollProvider`, `SettlementProvider` 인터페이스 — 실제 외부 adapter 도입 시 정의
 - [x] CSV 파싱 + Zod 검증 + 정규화 (apps/api/src/evidence/csv-normalizer.ts)
 - [ ] MockToastEvidenceProvider 구현 (같은 인터페이스)
 - [x] Evidence Normalization: tipType 분류, USD센트 정규화, sourceHash 계산, upsert 멱등 import
 - [x] `POST /providers/csv/import` — 현재 동기 처리; BullMQ `csv-import` queue 오프로드는 대량 처리 필요 시
 - [x] `GET /venues/:venueId/tip-evidence`, `GET /venues/:venueId/shift-evidence` (`POST /evidence/sync`는 Phase 5)
-- [x] CSV fixture로 E2E 검증 완료
+- [x] CSV fixture로 Supertest API 통합 흐름 검증 완료
 
 ### 1.6 Shift Module
 
@@ -280,7 +297,8 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 
 - [x] 규칙 구현: earned>0&allocated=0, allocated>0&paid=0, paid>0&payrollReported=0, withholding unknown, refund exists & paid unchanged
 - [x] 경고 6종 생성: ALLOCATION_GAP, PAYOUT_GAP, PAYROLL_GAP, WITHHOLDING_UNKNOWN, REFUND_ADJUSTMENT_REQUIRED, UNMAPPED_WORKER
-- [ ] DUPLICATE_EVIDENCE(DB unique로 원천 차단됨), STALE_PROVIDER_DATA — Phase 5 provider sync 시 추가
+- [x] STALE_PROVIDER_DATA — Square sync 24시간 stale 기준 생성, 성공 시 자동 resolve
+- [ ] DUPLICATE_EVIDENCE alert — DB unique 제약으로 중복 저장은 차단되지만 별도 경고는 미구현
 - [x] `GET /workers/me/discrepancies`
 
 ### 3.4 Evidence Grade Module (§18)
@@ -342,8 +360,8 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 ### 4.4 만료·철회 Worker
 
 - [x] BullMQ `disclosure-expire` — 5분 주기 repeatable로 만료 report EXPIRED 처리 (+ 읽기 시점 백스톱)
-- [x] 철회 즉시 반영: verify REVOKED + disclosed 숨김 + PDF 403 (E2E 확인)
-- [x] correction 발생 시 해당 worker의 ISSUED report → CORRECTED 자동 전환 (E2E 확인 — 데모 23~24단계)
+- [x] 철회 즉시 반영: verify REVOKED + disclosed 숨김 + PDF 403 (서비스 로직 구현; 전체 브라우저 acceptance 미완료)
+- [x] correction 발생 시 해당 worker의 ISSUED report → CORRECTED 자동 전환 (서비스 로직 구현; 데모 23~24단계 자동화 미완료)
 
 ### 4.5 Worker 화면 (Frontend 3차)
 
@@ -378,9 +396,19 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 - [x] rate limit / token 만료 / API 오류 재시도 (BullMQ exponential backoff 6회, OAuth refresh)
 - [x] STALE_PROVIDER_DATA 경고 연동 (24시간 기준, 성공 시 자동 resolve)
 
-구현 검증: Square provider 단위 테스트 3/3, API 통합 테스트의 OAuth connect RBAC/authorization URL,
-Sandbox access token으로 Locations/Payments/Timecards API 모두 200 응답 확인(현재 fixture 0건). 실제 OAuth
-callback과 샌드박스 팁·Timecard 수집은 Square seller 승인 및 fixture 생성 후 end-to-end 확인한다.
+구현 검증: Square provider 단위 테스트 3/3, API 통합 테스트의 OAuth connect RBAC/authorization URL 확인.
+
+**Live acceptance (2026-08-07 완료)** — `scripts/square-fixture.mjs`로 sandbox에 실데이터 생성
+(team member 3명, 카드 팁 결제, timecard 3건 + declared cash tip, 전액환불 2건), `scripts/seed-square-connection.mjs`로
+CONNECTED 연결 시드(OAuth callback이 저장하는 것과 동일한 형태) 후:
+
+- provider health live 호출 OK (latency ~700ms)
+- `POST /evidence/sync` → worker sync 성공: tips 6·shifts 6, **venue timezone(NY) 기준 business date 정규화**,
+  전액환불 2건 refundStatus=FULL, square 매핑 전부 해석
+- 배분 계산: 풀 정확히 $120.00 (환불 제외, REFUNDED_PAYMENT_EXCLUDED non-blocking issue 2건),
+  A/B/C = $42.40/$50.88/$26.72 → 승인 PAYABLE
+
+남은 것: **브라우저 OAuth 승인 클릭 자체**(사용자가 sandbox 계정으로 1회 수행하면 동일 저장 경로 사용) — 데모 선택 사항.
 
 **완료 기준 (Phase 5)**
 
@@ -408,7 +436,8 @@ callback과 샌드박스 팁·Timecard 수집은 Square seller 승인 및 fixtur
 
 ### 6.3 Health Check (§29.11)
 
-- [ ] `GET /health`, `/health/database`, `/health/redis`, `/health/solana`, `/health/providers/square`
+- [x] `GET /health` 기본 liveness endpoint
+- [ ] `/health/database`, `/health/redis`, `/health/solana`, `/health/providers/square` dependency health
 - [ ] Worker heartbeat, queue backlog, failed job count 노출
 
 ### 6.4 CI/CD 완성 (§29.10)
@@ -424,10 +453,15 @@ callback과 샌드박스 팁·Timecard 수집은 Square seller 승인 및 fixtur
 
 ### 6.6 데모 시나리오 검증 (§26 — 24단계)
 
+- [x] 로컬 데모 자동화: `pnpm demo:setup`, `pnpm demo:start`, `pnpm demo:stop` + 3000/3001 포트 사전 검사
 - [x] Supertest API 통합 테스트: OTP/refresh rotation, RBAC, tenant isolation,
       CSV→매핑→정책→배분→승인 상태 전이 및 중복 승인/재계산 차단
-- [ ] Playwright E2E: 데모 시나리오 1~24 전체 자동화
-      (CSV/Square 수집 → 매핑 → 배분 → 승인 → Worker A Payroll route / Worker B USDC route → PayoutSettled → payroll import → discrepancy alert → 선택 공개 → QR 검증 → correction → report CORRECTED)
+- [x] Playwright E2E: 데모 시나리오 1~24 전체 자동화 — `apps/web/e2e/demo.spec.ts` (`scripts/e2e-demo.sh`)
+      매니저 UI 로그인 → CSV import → 미매핑 REVIEW_REQUIRED → 매핑 확정 → CALCULATED($120) → 승인 →
+      Worker A Legacy(UI dialog) → Worker B **실제 Devnet USDC**(unsigned tx→keypair 서명→FINALIZED→PAID) →
+      payroll import → rebuild(UI) → Worker A CONFIRMED / Worker B PAYROLL_GAP(각자 UI) →
+      공개 발급(QR·공유 URL) → 공개 페이지 VALID → correction→CORRECTED → 철회→REVOKED·필드 차단.
+      실행마다 유일한 business date 파생으로 반복 실행 가능(2회 연속 통과, 각 ~29s). `PW_SKIP_ONCHAIN=1` 지원
 - [ ] 배포 후 smoke test 12단계 (§29.11) 수행
 
 **완료 기준 (Phase 6)** — §30 캡스톤 배포 완료 기준 전체 충족
@@ -438,12 +472,16 @@ callback과 샌드박스 팁·Timecard 수집은 Square seller 승인 및 fixtur
 
 | 종류            | 도구                          | 핵심 대상                                                            |
 | --------------- | ----------------------------- | -------------------------------------------------------------------- |
-| Unit            | Jest                          | 배분 엔진, 등급 판정, discrepancy 규칙, hash 계산                    |
-| API Integration | Supertest                     | 인증, RBAC, tenant isolation, 상태 머신 전이 — 핵심 흐름 구현 완료   |
+| Unit            | Node test runner              | 배분 엔진, provider 정규화, 등급 판정, discrepancy 규칙, hash 계산   |
+| API Integration | Jest + Supertest              | 인증, RBAC, tenant isolation, 상태 머신 전이 — 핵심 흐름 구현 완료   |
 | Anchor          | anchor test + local validator | settle_payout 검사 10종, duplicate, invalid mint, insufficient vault |
 | Idempotency     | Jest/Supertest                | paymentId 중복, confirmation 재시도                                  |
 | Fixture         | Jest                          | CSV 파싱·정규화                                                      |
 | E2E             | Playwright                    | 데모 시나리오 24단계, report 철회 차단                               |
+
+최근 검증 결과(2026-08-06): shared 단위 테스트 11/11, Square provider 단위 테스트 3/3,
+API 통합 테스트 3/3, 전체 workspace typecheck 7개·build·lint 통과. Anchor local validator 테스트는
+Phase 2에서 14/14 통과했으며, 현재 GitHub Actions에는 Anchor job이 없어 별도 CI 보강이 필요하다.
 
 ---
 

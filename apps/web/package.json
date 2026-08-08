@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "start:dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no tests yet\""
+    "test": "echo \"no tests yet\"",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@serveproof/shared": "workspace:*",
@@ -20,6 +22,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.0.0",
     "@types/qrcode": "^1.5.6",

@@ -1,0 +1,5 @@
+provider,venue_external_id,worker_external_id,shift_external_id,tip_type,gross_tip,clock_in,clock_out,role,payout_route,payroll_status
+toast_mock,venue_001,worker_001,d2_s1,CARD_TIP,45.00,2026-08-02T11:00:00Z,2026-08-02T15:00:00Z,SERVER,PAYROLL,PENDING
+toast_mock,venue_001,worker_001,d2_s2,CARD_TIP,30.00,2026-08-02T17:00:00Z,2026-08-02T21:00:00Z,SERVER,PAYROLL,PENDING
+toast_mock,venue_001,worker_002,d2_s3,QR_TIP,60.00,2026-08-02T16:00:00Z,2026-08-02T23:00:00Z,BARTENDER,USDC,PENDING
+toast_mock,venue_001,worker_003,d2_s4,SERVICE_CHARGE,80.00,2026-08-02T17:00:00Z,2026-08-02T22:00:00Z,BUSSER,PAYROLL,PENDING

@@ -6,7 +6,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
 } from "@nestjs/common";
-import { centsToUsdcBaseUnits, QUEUES } from "@serveproof/shared";
+import { centsToUsdcBaseUnits, encodeBase58, QUEUES } from "@serveproof/shared";
 import { buildSettlePayoutTx, fetchSettlementRecord, parsePubkey } from "@serveproof/solana";
 import { Connection, Transaction } from "@solana/web3.js";
 import { Queue } from "bullmq";
@@ -158,7 +158,13 @@ export class PayoutsService implements OnModuleDestroy {
     };
   }
 
-  /** Spec §16.1 step 7–9 — submit the signed transaction and enqueue confirmation. */
+  /**
+   * Spec §16.1 step 7–9 — submit the signed transaction and enqueue confirmation.
+   *
+   * The signature is derived locally and persisted BEFORE broadcasting, so even
+   * if the RPC hangs or the HTTP response is lost, confirmation/reconcile jobs
+   * can track the transaction (§29.7 — broadcast state must never be untracked).
+   */
   async submitSigned(payoutId: string, signedTransactionBase64: string) {
     const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
     if (!payout) throw new NotFoundException(`Payout ${payoutId} not found`);
@@ -167,10 +173,9 @@ export class PayoutsService implements OnModuleDestroy {
     }
 
     const tx = Transaction.from(Buffer.from(signedTransactionBase64, "base64"));
-    const signature = await this.connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: false,
-      maxRetries: 5,
-    });
+    const signatureBytes = tx.signatures[0]?.signature;
+    if (!signatureBytes) throw new BadRequestException("Transaction is not signed");
+    const signature = encodeBase58(Uint8Array.from(signatureBytes));
 
     const updated = await this.prisma.payout.update({
       where: { id: payoutId },
@@ -181,6 +186,34 @@ export class PayoutsService implements OnModuleDestroy {
       { payoutId, signature },
       { attempts: 10, backoff: { type: "exponential", delay: 3000 } },
     );
+
+    // Broadcast with a hard timeout — a hanging public RPC must not hang the
+    // HTTP request. On timeout the tx may still propagate; the confirmation
+    // job / reconcile sweep resolves the true outcome either way.
+    const raw = tx.serialize();
+    try {
+      await Promise.race([
+        this.connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 5 }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("rpc_send_timeout")), 15_000)),
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== "rpc_send_timeout") {
+        // Preflight/broadcast rejected outright — safe to fail now (no PDA yet).
+        await this.prisma.$transaction([
+          this.prisma.payout.update({
+            where: { id: payoutId },
+            data: { status: "FAILED", failedReason: message.slice(0, 500) },
+          }),
+          this.prisma.workerAllocation.update({
+            where: { id: payout.allocationId },
+            data: { payoutStatus: "FAILED" },
+          }),
+        ]);
+        throw new BadRequestException(`Transaction rejected: ${message}`);
+      }
+      // timeout — leave SUBMITTED; background jobs take over from here
+    }
     return updated;
   }
 

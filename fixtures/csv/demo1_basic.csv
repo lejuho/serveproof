@@ -1,0 +1,4 @@
+provider,venue_external_id,worker_external_id,shift_external_id,tip_type,gross_tip,clock_in,clock_out,role,payout_route,payroll_status
+toast_mock,venue_001,worker_001,d1_s1,CARD_TIP,120.00,2026-08-01T17:00:00Z,2026-08-01T22:00:00Z,SERVER,PAYROLL,PROVIDER_CONFIRMED
+toast_mock,venue_001,worker_002,d1_s2,CARD_TIP,0.00,2026-08-01T17:00:00Z,2026-08-01T23:00:00Z,SERVER,USDC,PENDING
+toast_mock,venue_001,worker_003,d1_s3,CASH_TIP,35.50,2026-08-01T18:00:00Z,2026-08-01T22:30:00Z,BUSSER,CASH_RETAINED,PENDING

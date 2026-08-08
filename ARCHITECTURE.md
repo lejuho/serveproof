@@ -1,7 +1,19 @@
 # ServeProof 코드베이스 맵 (Architecture)
 
-> 최종 갱신: 2026-08-06 (Phase 5 구현 시점)
+> 최종 갱신: 2026-08-07 (코드·CI·테스트 재점검)
 > 관련 문서: [명세서](ServeProof_MVP_Implementation_Spec_v2.md) · [구현 계획/진행 체크리스트](IMPLEMENTATION_PLAN.md)
+
+---
+
+## 현재 상태 한눈에 보기
+
+- Phase 1~4의 핵심 도메인·정산·관측·선택 공개 기능은 구현돼 있다.
+- Phase 5 Square adapter, OAuth/token encryption, sync worker, provider health는 코드와 단위 테스트가 완료됐다.
+- Square Sandbox API 자체는 200 응답을 확인했지만 fixture가 0건이었으므로, 실제 OAuth callback과 tip/Timecard 수집 acceptance는 남아 있다.
+- Phase 6 중 로컬 데모 setup/start/stop과 핵심 Supertest 흐름은 완료됐다. Playwright 24단계와 staging 배포는 아직 미완료다.
+- GitHub Actions는 DB migration, lint, build, typecheck, JS test, gitleaks를 수행한다. Anchor build/test는 아직 CI에 포함되지 않는다.
+
+상세 체크 상태와 다음 critical path는 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 단일 기준으로 사용한다.
 
 ---
 
@@ -28,6 +40,10 @@ serveproof/
 │  └─ devnet-state.json                # 배포된 주소 기록 (program/mint/venuePda/vault)
 ├─ fixtures/
 │  └─ csv/          # 데모 CSV fixture (§26 시나리오용)
+├─ scripts/
+│  ├─ demo-setup.sh # env 생성·의존성·인프라·migration·seed
+│  ├─ demo-start.sh # 3000/3001 사전 검사 후 web/api/worker 동시 기동
+│  └─ demo-stop.sh  # 로컬 Postgres·Redis 중지(데이터 volume 유지)
 ├─ .github/workflows/ci.yml   # lint→build→typecheck→test + gitleaks
 ├─ docker-compose.yml         # 로컬 Postgres(:5433) + Redis(:6379)
 └─ .env / .env.example        # §29.1 환경변수
@@ -62,7 +78,7 @@ DB·네트워크 I/O가 전혀 없는 순수 TS. 단위 테스트는 여기에 �
 
 - [prisma/schema.prisma](packages/db/prisma/schema.prisma) — §9 전체 모델. **금액 필드는 `*UsdCents`(Int), 온체인 금액은 `amountBaseUnits`(BigInt)**
 - [prisma/seed.mjs](packages/db/prisma/seed.mjs) — 데모 시나리오(§26) seed: Demo Diner, Worker A/B/C(C는 매핑 PENDING), 정책 v1. 멱등
-- 마이그레이션: `init` → `auth_refresh_tokens` → `payout_payment_id_hash`
+- 마이그레이션: `init` → `auth_refresh_tokens` → `payout_payment_id_hash` → `report_snapshot` → `provider_connections`
 
 모델 그룹:
 
@@ -70,6 +86,7 @@ DB·네트워크 I/O가 전혀 없는 순수 TS. 단위 테스트는 여기에 �
 인증/테넌시   User, Organization, OrganizationMember(OrgRole), RefreshToken
 노동자 신원   Worker, ExternalWorkerAccount(venue+provider+externalId 유니크), WorkerWallet
 증거         TipEvidence, ShiftEvidence  (sourceHash, businessDate, provider별 유니크 키)
+Provider     ProviderConnection (OAuth state hash, AES-GCM token ciphertext, sync/health 상태)
 배분         AllocationPolicy(버전 불변), AllocationBatch(venue+date+policyVersion 유니크), WorkerAllocation
 정산(P2)     Payout(paymentId 유니크 = idempotency key)
 관측(P3)     PayrollRecord, IncomeEntry(correction 체인), DiscrepancyAlert
@@ -160,18 +177,24 @@ src/
 
 ---
 
-## 7. 핵심 도메인 흐름 (현재 동작하는 것)
+## 7. 핵심 도메인 흐름
 
 ```text
-CSV 텍스트
-→ [api/evidence] normalizeCsv: Zod 검증, USD센트, sourceHash, businessDate(venue TZ)
+CSV 텍스트 ──────────────→ [api/evidence] normalizeCsv
+Square OAuth/periodic sync → [worker/square-sync] Payment·Order·Timecard normalize
+                          ↘ Zod 검증, USD센트, sourceHash, businessDate(venue TZ)
 → TipEvidence/ShiftEvidence 멱등 upsert (+ CONFIRMED 매핑으로 mappedWorkerId 해석)
 → [api/allocations] calculate: 증거 로드 → shared 배분 엔진(순수 함수)
    ├─ blocking issue 있음 → REVIEW_REQUIRED  (예: UNMAPPED_WORKER)
    └─ 없음 → CALCULATED (+ evidenceHash, allocationHash)
 → [api/mappings] verify → 시프트 backfill → 재계산
 → [api/allocations] approve (OWNER/MANAGER) → PAYABLE + AuditLog
-→ (Phase 2) PAYABLE 배분을 Solana USDC로 정산
+→ PAYABLE allocation
+   ├─ legacy/payroll evidence → venue-attested FINALIZED
+   └─ unsigned Solana tx → venue wallet 서명 → submit → worker confirmation → FINALIZED
+→ income rebuild → IncomeEntry + evidence grade + discrepancy alert
+→ worker가 disclosure scope 선택 → immutable snapshot + PDF/QR
+→ public /verify/:token → VALID/EXPIRED/REVOKED/CORRECTED 상태와 허용 필드만 공개
 ```
 
 상태 머신 가드: REVIEW_REQUIRED 승인 불가(400), 이중 승인(409), 승인 후 재계산(409).
@@ -183,13 +206,23 @@ CSV 텍스트
 1. **금액**: DB·API 내부는 항상 정수 USD 센트. 표시할 때만 달러 변환. USDC 변환은 `money.ts`만 사용
 2. **배분 로직은 shared의 순수 함수에만** — API 서비스는 로드/저장만 담당. 테스트도 shared에서
 3. **원본 불변**: 승인된 batch는 수정 불가, 정정은 correction ledger(Phase 3)로. Evidence는 sourceHash 기반 멱등 upsert
-4. **비밀값은 해시로만 저장**: OTP, refresh token, (Phase 4) disclosure access token
+4. **비밀값 저장 규칙**: OTP·refresh token·disclosure access token은 sha256 해시만 저장. Square OAuth access/refresh token은 AES-256-GCM 암호화 저장
 5. **정책 버전 불변**: 수정 = 새 버전 append, 과거 batch는 계산 당시 버전 유지
 6. **인가는 컨트롤러에서 명시적으로**: 모든 venue-scoped 라우트는 `assertVenueRole` 호출 필수
 
 ---
 
 ## 9. 로컬 개발 명령
+
+권장 데모 기동:
+
+```bash
+pnpm demo:setup   # 최초 1회: env·의존성·DB/Redis·migration·seed
+pnpm demo:start   # API(:3001) + worker + web(:3000), 포트 충돌 사전 차단
+pnpm demo:stop    # DB/Redis 중지, volume은 보존
+```
+
+개별 기동·검증:
 
 ```bash
 docker compose up -d                # Postgres(:5433) + Redis(:6379)
@@ -235,9 +268,11 @@ POST /payouts/:id/submit              # raw tx 제출 → SUBMITTED + solana-con
 실패 처리(§29.7): 재시도 전 항상 SettlementRecord PDA 선조회 — "HTTP 재시도 ≠ USDC 재전송".
 `payout-reconcile`가 60초마다 stale payout을 정합화. legacy rail은 `POST /payouts/legacy-evidence`로 venue-attested FINALIZED.
 
-## 11. 남은 주요 작업 (Phase 6)
+## 11. 남은 주요 작업
 
+- Square Sandbox에 tip/Timecard fixture를 만들고 실제 OAuth callback → sync → allocation acceptance 완료
 - Playwright 브라우저 E2E로 데모 시나리오 24단계 자동화
 - Vercel/Railway staging 배포와 배포 후 smoke test
 - PDF를 S3 호환 private object storage로 이전
 - Sentry, structured logging, dependency health/worker heartbeat 보강
+- Anchor build/test workflow 추가, Devnet deploy/admin/venue authority 분리

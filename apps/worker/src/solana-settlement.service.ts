@@ -115,17 +115,33 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
       },
       take: 20,
     });
+    const abandonedBefore = new Date(Date.now() - 10 * 60 * 1000);
     for (const payout of stale) {
       const record = await fetchSettlementRecord(this.connection, payout.paymentId);
       if (record) {
         await this.finalizeFromChain(payout.id, payout.allocationId);
-      } else if (
-        payout.status === "INITIATED" &&
-        payout.initiatedAt &&
-        payout.initiatedAt < new Date(Date.now() - 10 * 60 * 1000)
-      ) {
-        // built but never landed → blockhash long expired; safe to retry with a new tx
+        continue;
+      }
+      if (!payout.initiatedAt || payout.initiatedAt >= abandonedBefore) continue;
+
+      // No settlement PDA after 10+ minutes. Deciding failure is safe as long
+      // as nothing can still land: the blockhash is long expired, and even if
+      // a ghost tx did land later, the PDA would appear and a later sweep
+      // would flip this back via finalizeFromChain (settle is idempotent
+      // on-chain, so a retry payment can never double-pay).
+      if (!payout.txSignature) {
+        // INITIATED (never submitted) or event-indexer CONFIRMED whose tx was
+        // dropped from a fork before the signature was ever persisted
         await this.markFailed(payout.id, payout.allocationId, "blockhash_expired");
+        continue;
+      }
+      const status = (
+        await this.connection.getSignatureStatuses([payout.txSignature], {
+          searchTransactionHistory: true,
+        })
+      ).value[0];
+      if (!status) {
+        await this.markFailed(payout.id, payout.allocationId, "transaction_dropped");
       }
     }
     if (stale.length > 0) {

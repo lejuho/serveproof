@@ -4,6 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as QRCode from "qrcode";
 import { api, ApiError, clearTokens, getToken } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+import {
+  AppShell,
+  Badge,
+  Button,
+  Callout,
+  Card,
+  inputClass,
+  StatCard,
+  tableCellClass,
+  tableHeadClass,
+} from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -59,30 +71,8 @@ function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const GRADE_STYLE: Record<string, string> = {
-  A: "bg-emerald-100 text-emerald-800",
-  B: "bg-blue-100 text-blue-800",
-  C: "bg-amber-100 text-amber-800",
-  D: "bg-orange-100 text-orange-800",
-  E: "bg-red-100 text-red-700",
-};
-
-const WITHHOLDING_STYLE: Record<string, string> = {
-  CONFIRMED: "bg-emerald-100 text-emerald-800",
-  PENDING: "bg-blue-100 text-blue-800",
-  UNKNOWN: "bg-zinc-100 text-zinc-600",
-};
-
-const ALERT_LABEL: Record<string, string> = {
-  ALLOCATION_GAP: "배분 누락 — 근무는 있는데 배분이 없습니다",
-  PAYOUT_GAP: "지급 대기 — 승인된 배분이 아직 지급되지 않았습니다",
-  PAYROLL_GAP: "Payroll 미신고 — 지급은 됐지만 payroll에 반영되지 않았습니다",
-  WITHHOLDING_UNKNOWN: "원천징수 미확인",
-  REFUND_ADJUSTMENT_REQUIRED: "환불 반영 필요",
-  UNMAPPED_WORKER: "외부 계정 미매핑",
-};
-
 export default function MyIncomePage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -191,7 +181,7 @@ export default function MyIncomePage() {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (!res.ok) {
-      setError("PDF 다운로드 실패");
+      setError(t("me.share.pdfFail"));
       return;
     }
     const blob = await res.blob();
@@ -204,256 +194,226 @@ export default function MyIncomePage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">내 소득</h1>
-          {me && (
-            <p className="text-sm text-zinc-500">
-              {me.user.displayName} · {me.user.email}
-            </p>
-          )}
-        </div>
+    <AppShell
+      wide
+      title={t("me.title")}
+      subtitle={me ? `${me.user.displayName} · ${me.user.email}` : undefined}
+      right={
         <button
           onClick={() => {
             clearTokens();
             router.push("/login");
           }}
-          className="text-sm text-zinc-500 underline"
+          className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
         >
-          로그아웃
+          {t("logout")}
         </button>
-      </header>
+      }
+    >
+      {error && <Callout tone="red">{error}</Callout>}
 
-      {error && <p className="rounded-md bg-red-100 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      {/* Summary cards */}
       {summary && (
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <p className="text-xs text-zinc-500">확정 배분 총액</p>
-            <p className="text-xl font-bold">{usd(summary.totals.allocatedUsdCents)}</p>
-          </div>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <p className="text-xs text-zinc-500">실지급 총액</p>
-            <p className="text-xl font-bold">{usd(summary.totals.paidUsdCents)}</p>
-          </div>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <p className="text-xs text-zinc-500">월평균 배분</p>
-            <p className="text-xl font-bold">{usd(summary.avgMonthlyAllocatedUsdCents)}</p>
-          </div>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <p className="text-xs text-zinc-500">사업장 수 / 시프트</p>
-            <p className="text-xl font-bold">
-              {summary.payerCount} / {summary.shiftCount}
-            </p>
-          </div>
-        </section>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard label={t("me.stat.allocated")} value={usd(summary.totals.allocatedUsdCents)} />
+          <StatCard label={t("me.stat.paid")} value={usd(summary.totals.paidUsdCents)} />
+          <StatCard label={t("me.stat.avg")} value={usd(summary.avgMonthlyAllocatedUsdCents)} />
+          <StatCard
+            label={t("me.stat.payers")}
+            value={`${summary.payerCount} · ${summary.shiftCount}`}
+            hint="payer count · shifts"
+          />
+        </div>
       )}
 
-      {/* Discrepancy alerts */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">알림 (Discrepancy)</h2>
+      <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
         {alerts.length === 0 ? (
-          <p className="text-sm text-zinc-500">모든 상태가 정상입니다.</p>
+          <p className="text-sm text-zinc-400">{t("me.alerts.empty")}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {alerts.map((alert) => (
-              <li key={alert.id} className="rounded-md bg-amber-50 px-3 py-2 text-sm">
-                <b className="text-amber-800">{alert.type}</b>{" "}
-                <span className="text-amber-700">{ALERT_LABEL[alert.type] ?? ""}</span>
+              <li
+                key={alert.id}
+                className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
+              >
+                <Badge tone="REVIEW_REQUIRED">{alert.type}</Badge>
+                <span className="text-sm text-amber-800">{t(`alert.${alert.type}`)}</span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
-      {/* Shift timeline */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">시프트 타임라인</h2>
+      <Card title={t("me.timeline.title")} description={t("me.timeline.desc")}>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-zinc-200 text-left text-zinc-500">
-                <th className="py-1 pr-2">날짜</th>
-                <th className="py-1 pr-2">사업장</th>
-                <th className="py-1 pr-2 text-right">배분</th>
-                <th className="py-1 pr-2 text-right">지급</th>
-                <th className="py-1 pr-2 text-right">Payroll 신고</th>
-                <th className="py-1 pr-2">원천징수</th>
-                <th className="py-1 pr-2">경로</th>
-                <th className="py-1">등급</th>
+              <tr>
+                <th className={tableHeadClass}>{t("me.col.date")}</th>
+                <th className={tableHeadClass}>{t("me.col.venue")}</th>
+                <th className={`${tableHeadClass} text-right`}>{t("me.col.allocated")}</th>
+                <th className={`${tableHeadClass} text-right`}>{t("me.col.paid")}</th>
+                <th className={`${tableHeadClass} text-right`}>{t("me.col.payroll")}</th>
+                <th className={tableHeadClass}>{t("me.col.withholding")}</th>
+                <th className={tableHeadClass}>{t("me.col.rail")}</th>
+                <th className={tableHeadClass}>{t("me.col.grade")}</th>
               </tr>
             </thead>
             <tbody>
               {timeline.map((entry) => (
-                <tr key={entry.id} className="border-b border-zinc-100">
-                  <td className="py-2 pr-2">
+                <tr key={entry.id}>
+                  <td className={`${tableCellClass} whitespace-nowrap font-medium text-zinc-900`}>
                     {entry.businessDate}
                     {entry.isCorrection && (
                       <span
                         title={entry.correctionReason ?? ""}
-                        className="ml-1 rounded bg-purple-100 px-1 text-xs text-purple-700"
+                        className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700"
                       >
-                        정정
+                        {t("me.corrected")}
                       </span>
                     )}
                   </td>
-                  <td className="py-2 pr-2">{entry.venue.name}</td>
-                  <td className="py-2 pr-2 text-right font-mono">{usd(entry.allocatedUsdCents)}</td>
-                  <td className="py-2 pr-2 text-right font-mono">{usd(entry.paidUsdCents)}</td>
-                  <td className="py-2 pr-2 text-right font-mono">
+                  <td className={tableCellClass}>{entry.venue.name}</td>
+                  <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                    {usd(entry.allocatedUsdCents)}
+                  </td>
+                  <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                    {usd(entry.paidUsdCents)}
+                  </td>
+                  <td className={`${tableCellClass} text-right tabular-nums`}>
                     {usd(entry.payrollReportedUsdCents)}
                   </td>
-                  <td className="py-2 pr-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${WITHHOLDING_STYLE[entry.withholdingStatus]}`}
-                    >
-                      {entry.withholdingStatus}
-                    </span>
+                  <td className={tableCellClass}>
+                    <Badge tone={entry.withholdingStatus}>{entry.withholdingStatus}</Badge>
                   </td>
-                  <td className="py-2 pr-2 text-xs">{entry.payoutRail ?? "—"}</td>
-                  <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${GRADE_STYLE[entry.evidenceGrade] ?? "bg-zinc-100"}`}
-                    >
-                      {entry.evidenceGrade}
-                    </span>
+                  <td className={`${tableCellClass} text-sm text-zinc-500`}>
+                    {entry.payoutRail ?? "—"}
+                  </td>
+                  <td className={tableCellClass}>
+                    <Badge tone={entry.evidenceGrade}>{entry.evidenceGrade}</Badge>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
 
-      {/* Selective disclosure (spec §20–21, §26 steps 20–22) */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">소득증명 공유</h2>
-        <div className="flex flex-wrap items-center gap-2">
+      <Card title={t("me.share.title")} description={t("me.share.desc")}>
+        <div className="flex flex-wrap items-center gap-3">
           <input
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className={`${inputClass} w-auto min-w-52`}
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
-            placeholder="공개 목적"
+            placeholder={t("me.share.purpose")}
           />
           <select
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className={`${inputClass} w-auto`}
             value={level}
             onChange={(e) => setLevel(e.target.value)}
           >
-            <option value="LEVEL_1">LEVEL 1 — 조건 충족 여부만 (월 $3,000 이상)</option>
-            <option value="LEVEL_2">LEVEL 2 — 월평균·payer 수·등급</option>
-            <option value="LEVEL_3">LEVEL 3 — 시프트별 상세</option>
+            <option value="LEVEL_1">{t("me.share.l1")}</option>
+            <option value="LEVEL_2">{t("me.share.l2")}</option>
+            <option value="LEVEL_3">{t("me.share.l3")}</option>
           </select>
-          <button
-            onClick={createDisclosure}
-            disabled={busy}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            최근 3개월 보고서 발급
-          </button>
+          <Button onClick={createDisclosure} disabled={busy}>
+            {t("me.share.issue")}
+          </Button>
         </div>
 
         {shareUrl && (
-          <div className="mt-3 flex items-start gap-4 rounded-md bg-emerald-50 p-3">
+          <div className="mt-4 flex items-start gap-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5">
             {qrDataUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt="verification QR" className="h-36 w-36" />
+              <img
+                src={qrDataUrl}
+                alt="verification QR"
+                className="h-36 w-36 rounded-lg border border-emerald-200 bg-white p-1.5"
+              />
             )}
             <div className="text-sm">
-              <p className="font-semibold text-emerald-800">공유 링크 (지금 한 번만 표시됩니다)</p>
+              <p className="font-semibold text-emerald-800">{t("me.share.linkOnce")}</p>
               <a
                 href={shareUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="break-all text-emerald-700 underline"
+                className="mt-1 block break-all text-emerald-700 underline underline-offset-2"
               >
                 {shareUrl}
               </a>
               {lastReportId && (
-                <p className="mt-2">
-                  <button
-                    onClick={() => downloadPdf(lastReportId)}
-                    className="rounded-md bg-emerald-700 px-3 py-1 text-xs text-white"
-                  >
-                    PDF 다운로드
-                  </button>
-                </p>
+                <div className="mt-3">
+                  <Button size="sm" onClick={() => downloadPdf(lastReportId)}>
+                    {t("me.share.pdf")}
+                  </Button>
+                </div>
               )}
             </div>
           </div>
         )}
 
         {grants.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-2 text-sm">
+          <ul className="mt-4 flex flex-col gap-2">
             {grants.map((grant) => (
               <li
                 key={grant.id}
-                className="flex items-center justify-between rounded-md border border-zinc-100 px-3 py-2"
+                className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
               >
-                <span>
-                  <b>{grant.level}</b> · {grant.purpose} · 만료 {grant.expiresAt.slice(0, 10)}
-                  {grant.revokedAt && (
-                    <span className="ml-2 rounded bg-red-100 px-1.5 text-xs text-red-700">
-                      철회됨
-                    </span>
-                  )}
+                <span className="flex items-center gap-2.5 text-[15px]">
+                  <Badge>{grant.level}</Badge>
+                  <span className="text-zinc-700">{grant.purpose}</span>
+                  <span className="text-sm text-zinc-400">
+                    {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
+                  </span>
+                  {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
                   {!grant.revokedAt && grant.reports[0] && (
-                    <span className="ml-2 rounded bg-zinc-100 px-1.5 text-xs text-zinc-600">
-                      {grant.reports[0].status}
-                    </span>
+                    <Badge tone={grant.reports[0].status}>{grant.reports[0].status}</Badge>
                   )}
                 </span>
                 <span className="flex gap-2">
                   {!grant.revokedAt && grant.reports[0] && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="secondary"
                       onClick={() => downloadPdf(grant.reports[0]!.id)}
-                      className="rounded-md bg-zinc-600 px-2 py-1 text-xs text-white"
                     >
                       PDF
-                    </button>
+                    </Button>
                   )}
                   {!grant.revokedAt && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="danger"
                       onClick={() => revokeGrant(grant.id)}
                       disabled={busy}
-                      className="rounded-md bg-red-600 px-2 py-1 text-xs text-white disabled:opacity-50"
                     >
-                      철회
-                    </button>
+                      {t("me.share.revoke")}
+                    </Button>
                   )}
                 </span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
-      {/* Wallets */}
       {me && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="mb-2 font-semibold">수취 지갑</h2>
+        <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
           {me.wallets.length === 0 ? (
-            <p className="text-sm text-zinc-500">연결된 지갑이 없습니다.</p>
+            <p className="text-sm text-zinc-400">{t("me.wallet.empty")}</p>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm">
+            <ul className="flex flex-col gap-2">
               {me.wallets.map((wallet) => (
-                <li key={wallet.id} className="flex items-center gap-2">
-                  <code className="text-xs">
+                <li key={wallet.id} className="flex items-center gap-3">
+                  <code className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm text-zinc-600">
                     {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
                   </code>
-                  {wallet.isDefault && (
-                    <span className="rounded bg-emerald-100 px-1.5 text-xs text-emerald-700">
-                      기본
-                    </span>
-                  )}
+                  {wallet.isDefault && <Badge tone="CONFIRMED">{t("me.wallet.default")}</Badge>}
                 </li>
               ))}
             </ul>
           )}
-        </section>
+        </Card>
       )}
-    </main>
+    </AppShell>
   );
 }
