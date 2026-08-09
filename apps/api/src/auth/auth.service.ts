@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   OnApplicationShutdown,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -36,6 +37,29 @@ export class AuthService implements OnApplicationShutdown {
     this.redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
       maxRetriesPerRequest: 2,
     });
+    this.redis.on("error", (error) => {
+      this.logger.warn(`otp redis error (status=${this.redis.status}): ${error.message}`);
+    });
+  }
+
+  /**
+   * Run a Redis op with self-healing: a client that permanently gave up
+   * ('end') is reconnected once, and failures surface as 503 with the real
+   * cause instead of an opaque 500.
+   */
+  private async otpStore<T>(op: () => Promise<T>): Promise<T> {
+    if (["end", "close"].includes(this.redis.status)) {
+      await this.redis.connect().catch(() => undefined);
+    }
+    try {
+      return await op();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`otp store failure (status=${this.redis.status}): ${message}`);
+      throw new ServiceUnavailableException(
+        `OTP store unavailable: ${message} (redis=${this.redis.status})`,
+      );
+    }
   }
 
   async onApplicationShutdown() {
@@ -47,8 +71,10 @@ export class AuthService implements OnApplicationShutdown {
   async requestOtp(email: string): Promise<{ sent: boolean; devCode?: string }> {
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const key = `otp:${email.toLowerCase()}`;
-    await this.redis.set(key, sha256(code), "EX", OTP_TTL_SECONDS);
-    await this.redis.set(`${key}:attempts`, "0", "EX", OTP_TTL_SECONDS);
+    await this.otpStore(async () => {
+      await this.redis.set(key, sha256(code), "EX", OTP_TTL_SECONDS);
+      await this.redis.set(`${key}:attempts`, "0", "EX", OTP_TTL_SECONDS);
+    });
 
     // TODO(staging): send via email provider. Never log the code outside local.
     if ((process.env.APP_ENV ?? "local") === "local") {
@@ -60,13 +86,13 @@ export class AuthService implements OnApplicationShutdown {
 
   async verifyOtp(email: string, code: string): Promise<TokenPair & { userId: string }> {
     const key = `otp:${email.toLowerCase()}`;
-    const attempts = await this.redis.incr(`${key}:attempts`);
+    const attempts = await this.otpStore(() => this.redis.incr(`${key}:attempts`));
     if (attempts > OTP_MAX_ATTEMPTS) {
       await this.redis.del(key);
       throw new UnauthorizedException("Too many attempts; request a new code");
     }
 
-    const storedHash = await this.redis.get(key);
+    const storedHash = await this.otpStore(() => this.redis.get(key));
     if (!storedHash || storedHash !== sha256(code)) {
       throw new UnauthorizedException("Invalid or expired code");
     }
