@@ -5,11 +5,26 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function upsertUser(authUserId, email, displayName, role) {
-  return prisma.user.upsert({
-    where: { authUserId },
-    update: { email, displayName, role },
-    create: { authUserId, email, displayName, role },
-  });
+  // A fresh staging DB may receive an OTP login before the demo seed runs.
+  // Auth creates that address as `otp:<email>`/WORKER, so reconcile by email
+  // as well as authUserId instead of failing the unique email constraint.
+  const byAuthUserId = await prisma.user.findUnique({ where: { authUserId } });
+  if (byAuthUserId) {
+    return prisma.user.update({
+      where: { id: byAuthUserId.id },
+      data: { email, displayName, role },
+    });
+  }
+
+  const byEmail = await prisma.user.findUnique({ where: { email } });
+  if (byEmail) {
+    return prisma.user.update({
+      where: { id: byEmail.id },
+      data: { authUserId, displayName, role },
+    });
+  }
+
+  return prisma.user.create({ data: { authUserId, email, displayName, role } });
 }
 
 async function main() {

@@ -6,14 +6,14 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 
 ## 현재 구현 상태
 
-> 코드·CI·테스트 기준 최종 점검: 2026-08-07
+> 코드·CI·테스트·배포 기준 최종 점검: 2026-08-09
 
 - Phase 1~4: CSV 기반 도메인 흐름, Devnet 정산, 소득 관측, 선택 공개 기능 구현 완료
-- Phase 5: Square OAuth·암호화 token 저장·evidence sync·provider health 구현 및 단위 테스트 완료
-- Phase 5 acceptance: Sandbox API 200 응답은 확인했지만 fixture가 0건이어서 실제 OAuth callback과 tip·Timecard 수집 검증은 남아 있음
-- Phase 6: 로컬 데모 자동화와 핵심 Supertest 시나리오는 완료, Playwright 24단계와 staging 배포는 미완료
+- Phase 5: Square OAuth·암호화 token 저장·evidence sync·provider health 및 live acceptance 완료
+- Phase 6: 로컬 데모·Supertest·Playwright 완료, Vercel/Railway/Supabase/Upstash 데모 인프라 배포
+- 배포 후 남은 작업: staging seed, Worker queue 운영 확인, smoke test, private object storage와 dependency health
 
-다음 작업 순서는 **Square Sandbox fixture/live sync 검증 → Playwright 24단계 → staging 배포와 smoke test**입니다. 세부 체크리스트는 [구현 계획](IMPLEMENTATION_PLAN.md), 파일별 책임은 [코드베이스 맵](ARCHITECTURE.md)을 기준으로 합니다.
+다음 작업 순서는 **staging seed → Worker 운영 확인 → 배포 smoke test → storage/운영 보강**입니다. 세부 체크리스트는 [구현 계획](IMPLEMENTATION_PLAN.md), 파일별 책임은 [코드베이스 맵](ARCHITECTURE.md)을 기준으로 합니다.
 
 ## 주요 기능
 
@@ -304,17 +304,30 @@ CI는 PostgreSQL·Redis service container를 기동한 뒤 migration, lint, buil
 
 ## 데모 배포
 
-권장 데모 구성은 다음과 같습니다.
+### 현재 배포 현황 (2026-08-09)
+
+| 구성 요소   | 플랫폼                       | 주소/연결                                                                                   | 상태                          |
+| ----------- | ---------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------- |
+| Web         | Vercel                       | [serveproof-web.vercel.app](https://serveproof-web.vercel.app/)                             | 공개, HTTP 200 확인           |
+| API         | Railway                      | [serveproofapi-production.up.railway.app](https://serveproofapi-production.up.railway.app/) | 공개, `/health` HTTP 200 확인 |
+| Worker      | Railway                      | public domain 없음                                                                          | 내부 BullMQ consumer          |
+| PostgreSQL  | Supabase                     | `DATABASE_URL`로 API/Worker 연결                                                            | staging DB                    |
+| Redis       | Upstash Redis                | TLS `REDIS_URL`로 API/Worker 연결                                                           | BullMQ/OTP/OAuth state        |
+| Blockchain  | Solana Devnet                | 기존 Anchor program + tUSDC                                                                 | Devnet 전용                   |
+| PDF Storage | Railway API local filesystem | `var/reports`                                                                               | 영구 storage 이전 필요        |
+
+현재 배포 토폴로지:
 
 ```text
-Vercel:  apps/web
-Railway: apps/api + apps/worker + PostgreSQL + Redis
-Solana:  기존 Devnet 프로그램과 tUSDC
+Vercel Web ──HTTPS──→ Railway API ──→ Supabase PostgreSQL
+                          │          └─→ Upstash Redis/BullMQ
+                          │
+Railway Worker (internal) ┘─────────→ Solana Devnet / Square Sandbox
 ```
 
 ### 1. Railway 프로젝트
 
-Railway에 Git 저장소를 연결하고 PostgreSQL과 Redis를 추가한 뒤, 같은 저장소에서 `serveproof-api`와 `serveproof-worker` 서비스를 만듭니다. shared workspace package가 있으므로 두 서비스 모두 repository root `/`를 사용합니다.
+Railway에 같은 Git 저장소를 연결해 `serveproof-api`와 `serveproof-worker` 서비스를 운용합니다. DB와 Redis는 Railway 내부 서비스가 아니라 각각 Supabase와 Upstash를 사용합니다. shared workspace package가 있으므로 두 서비스 모두 repository root `/`를 사용합니다.
 
 API 서비스:
 
@@ -339,12 +352,12 @@ Migration은 API 서비스의 pre-deploy에서만 실행해 API와 worker가 동
 ```dotenv
 NODE_ENV=production
 APP_ENV=local
-DATABASE_URL=<Railway PostgreSQL reference>
-REDIS_URL=<Railway Redis reference>
+DATABASE_URL=<Supabase PostgreSQL session-pooler URI>
+REDIS_URL=<Upstash Redis rediss:// URI>
 AUTH_SECRET=<strong random secret>
 REPORT_SIGNING_KEY=<different strong random secret>
 PROVIDER_ENCRYPTION_KEY=<different strong random secret>
-WEB_ORIGIN=https://<vercel-domain>
+WEB_ORIGIN=https://serveproof-web.vercel.app
 
 SOLANA_NETWORK=devnet
 SOLANA_RPC_URL=<Devnet RPC URL>
@@ -355,7 +368,7 @@ SQUARE_ENVIRONMENT=sandbox
 SQUARE_APP_ID=...
 SQUARE_APP_SECRET=...
 SQUARE_ACCESS_TOKEN=...
-SQUARE_REDIRECT_URI=https://<railway-api-domain>/providers/square/callback
+SQUARE_REDIRECT_URI=https://serveproofapi-production.up.railway.app/providers/square/callback
 ```
 
 Railway가 런타임 `PORT`를 자동 주입하므로 배포 환경에 `API_PORT`를 별도로 고정하지 않습니다. API는 `PORT`를 우선 사용하고, 로컬에서만 `API_PORT=3001`을 사용합니다.
@@ -390,12 +403,18 @@ Vercel 환경변수:
 NEXT_PUBLIC_API_URL=https://<railway-api-domain>
 ```
 
+현재 production environment 값:
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://serveproofapi-production.up.railway.app
+```
+
 `NEXT_PUBLIC_API_URL`은 client bundle에 build-time으로 들어가므로 API 도메인을 바꾼 뒤에는 Web을 다시 배포해야 합니다. Vercel 배포가 끝나면 실제 도메인을 Railway의 `WEB_ORIGIN`에 넣고 API를 재배포합니다.
 
 ### 3. 배포 확인
 
 ```bash
-curl https://<railway-api-domain>/health
+curl https://serveproofapi-production.up.railway.app/health
 ```
 
 그다음 다음 순서로 smoke test를 수행합니다.

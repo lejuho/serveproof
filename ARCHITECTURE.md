@@ -1,6 +1,6 @@
 # ServeProof 코드베이스 맵 (Architecture)
 
-> 최종 갱신: 2026-08-07 (코드·CI·테스트 재점검)
+> 최종 갱신: 2026-08-09 (staging/demo 인프라 배포 반영)
 > 관련 문서: [명세서](ServeProof_MVP_Implementation_Spec_v2.md) · [구현 계획/진행 체크리스트](IMPLEMENTATION_PLAN.md)
 
 ---
@@ -8,12 +8,28 @@
 ## 현재 상태 한눈에 보기
 
 - Phase 1~4의 핵심 도메인·정산·관측·선택 공개 기능은 구현돼 있다.
-- Phase 5 Square adapter, OAuth/token encryption, sync worker, provider health는 코드와 단위 테스트가 완료됐다.
-- Square Sandbox API 자체는 200 응답을 확인했지만 fixture가 0건이었으므로, 실제 OAuth callback과 tip/Timecard 수집 acceptance는 남아 있다.
-- Phase 6 중 로컬 데모 setup/start/stop과 핵심 Supertest 흐름은 완료됐다. Playwright 24단계와 staging 배포는 아직 미완료다.
+- Phase 5 Square adapter, OAuth/token encryption, sync worker, provider health와 live acceptance가 완료됐다.
+- Phase 6의 로컬 데모, Supertest, Playwright가 완료됐고 Vercel Web과 Railway API/Worker가 배포됐다.
+- 데이터 계층은 Supabase PostgreSQL, queue는 Upstash Redis를 사용한다. staging seed·Worker 운영 확인·배포 smoke test는 남아 있다.
 - GitHub Actions는 DB migration, lint, build, typecheck, JS test, gitleaks를 수행한다. Anchor build/test는 아직 CI에 포함되지 않는다.
 
 상세 체크 상태와 다음 critical path는 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)를 단일 기준으로 사용한다.
+
+### 배포 토폴로지
+
+```text
+https://serveproof-web.vercel.app                Vercel / Next.js
+                  │ HTTPS (NEXT_PUBLIC_API_URL)
+                  ▼
+https://serveproofapi-production.up.railway.app  Railway / NestJS API
+                  │
+                  ├─ Supabase PostgreSQL
+                  ├─ Upstash Redis
+                  └─ Railway Worker (내부 전용, public domain 없음)
+                              ├─ BullMQ consumers/schedulers
+                              ├─ Square Sandbox sync
+                              └─ Solana Devnet confirmation/reconcile
+```
 
 ---
 
@@ -270,9 +286,9 @@ POST /payouts/:id/submit              # raw tx 제출 → SUBMITTED + solana-con
 
 ## 11. 남은 주요 작업
 
-- Square Sandbox에 tip/Timecard fixture를 만들고 실제 OAuth callback → sync → allocation acceptance 완료
-- Playwright 브라우저 E2E로 데모 시나리오 24단계 자동화
-- Vercel/Railway staging 배포와 배포 후 smoke test
+- Supabase staging seed 적용 후 manager/worker 양쪽 로그인 검증
+- Railway 내부 Worker의 9개 queue consumer와 scheduler 운영 확인
+- 배포 환경에서 smoke test 12단계 수행
 - PDF를 S3 호환 private object storage로 이전
 - Sentry, structured logging, dependency health/worker heartbeat 보강
 - Anchor build/test workflow 추가, Devnet deploy/admin/venue authority 분리

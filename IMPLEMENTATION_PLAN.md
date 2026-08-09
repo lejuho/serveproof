@@ -2,7 +2,7 @@
 
 > 기준 문서: [ServeProof_MVP_Implementation_Spec_v2.md](ServeProof_MVP_Implementation_Spec_v2.md)
 > 최초 작성: 2026-08-06<br>
-> 최종 점검: 2026-08-07 (코드·CI·자동화 테스트 기준)
+> 최종 점검: 2026-08-09 (코드·CI·자동화 테스트·배포 기준)
 
 이 문서는 명세서의 구현 단계를 Phase 0~6으로 확장해, 실제 작업 순서·산출물·완료 기준을 실행 가능한 단계로 세분화한 구현 계획이다.
 
@@ -22,17 +22,17 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 
 ### 현재 구현 상태
 
-| Phase                   | 상태                        | 남은 핵심 작업                                                  |
-| ----------------------- | --------------------------- | --------------------------------------------------------------- |
-| 0. 프로젝트 셋업        | 기본 완료                   | Anchor build/test CI workflow                                   |
-| 1. Domain Core          | 핵심 흐름 완료              | Google 로그인, MockToast, tip-out 로직, 정책 UI                 |
-| 2. Solana Settlement    | Devnet 기능 완료            | deploy/admin/venue authority 분리, Anchor CI                    |
-| 3. Observability        | 핵심 흐름 완료              | paid adjustment, 온체인 correction 연동, corrections UI         |
-| 4. Selective Disclosure | 기능 구현 완료              | 철회·정정 포함 전체 흐름의 Supertest/Playwright acceptance 보강 |
-| 5. Square Integration   | live acceptance 완료        | 브라우저 OAuth 승인 클릭(선택), MockToast                       |
-| 6. Deployment & Demo    | 로컬 자동화·Playwright 완료 | staging 배포, storage, dependency health, smoke test            |
+| Phase                   | 상태                  | 남은 핵심 작업                                                         |
+| ----------------------- | --------------------- | ---------------------------------------------------------------------- |
+| 0. 프로젝트 셋업        | 기본 완료             | Anchor build/test CI workflow                                          |
+| 1. Domain Core          | 핵심 흐름 완료        | Google 로그인, MockToast, tip-out 로직, 정책 UI                        |
+| 2. Solana Settlement    | Devnet 기능 완료      | deploy/admin/venue authority 분리, Anchor CI                           |
+| 3. Observability        | 핵심 흐름 완료        | paid adjustment, 온체인 correction 연동, corrections UI                |
+| 4. Selective Disclosure | 기능 구현 완료        | 철회·정정 포함 전체 흐름의 Supertest/Playwright acceptance 보강        |
+| 5. Square Integration   | live acceptance 완료  | 브라우저 OAuth 승인 클릭(선택), MockToast                              |
+| 6. Deployment & Demo    | 앱·데이터 인프라 배포 | staging seed, Worker 운영 확인, storage, dependency health, smoke test |
 
-현재 critical path는 **staging 배포(클라우드 계정 필요) → smoke test 12단계**만 남았다.
+현재 critical path는 **staging seed → Worker queue 운영 확인 → smoke test 12단계 → storage/운영 보강**이다.
 
 의존 관계:
 
@@ -421,11 +421,12 @@ CONNECTED 연결 시드(OAuth callback이 저장하는 것과 동일한 형태) 
 
 ### 6.1 Staging 배포
 
-- [ ] Frontend → Vercel
-- [ ] API + Worker → Railway 별도 서비스 (start:api / start:worker)
-- [ ] DB → Supabase PostgreSQL, Queue → Upstash Redis, Storage → Supabase private bucket
+- [x] Frontend → Vercel: `https://serveproof-web.vercel.app`
+- [x] API + Worker → Railway 별도 서비스: API `https://serveproofapi-production.up.railway.app`, Worker는 public domain 없는 내부 서비스
+- [x] DB → Supabase PostgreSQL, Queue → Upstash Redis
+- [ ] Storage → Supabase private bucket 또는 S3 호환 private object storage
 - [ ] RPC → Helius Devnet
-- [ ] `prisma migrate deploy`를 release command로 분리 (자동 migration 금지)
+- [x] API pre-deploy에서 `prisma migrate deploy` 1회 실행, Worker에서는 migration 미실행
 - [ ] staging seed: demo org/venue/workers/policy/wallet mappings/CSV fixtures
 
 ### 6.2 관측성 (§29.9)
