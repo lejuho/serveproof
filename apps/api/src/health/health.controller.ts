@@ -10,6 +10,37 @@ const timeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)),
   ]);
 
+/** Flatten an error's cause/AggregateError chain into diagnosable codes. */
+function describeError(error: unknown): { message: string; causes: string[] } {
+  const causes: string[] = [];
+  const visit = (e: unknown, depth: number) => {
+    if (!e || depth > 4) return;
+    if (e instanceof AggregateError) {
+      for (const inner of e.errors.slice(0, 4)) visit(inner, depth + 1);
+      return;
+    }
+    if (e instanceof Error) {
+      const code = (e as NodeJS.ErrnoException).code;
+      const address = (e as NodeJS.ErrnoException & { address?: string }).address;
+      causes.push([code, e.message, address].filter(Boolean).join(" "));
+      visit(e.cause, depth + 1);
+    }
+  };
+  if (error instanceof Error) visit(error.cause ?? error, 0);
+  return { message: error instanceof Error ? error.message : String(error), causes };
+}
+
+/** Host+port of a URL with credentials stripped (safe to expose). */
+function sanitizedTarget(raw: string | undefined): string {
+  if (!raw) return "(unset)";
+  try {
+    const url = new URL(raw);
+    return `${url.protocol}//${url.hostname}:${url.port || "(default)"}`;
+  } catch {
+    return `(unparseable: ${raw.slice(0, 12)}…)`;
+  }
+}
+
 /**
  * Spec §29.11 — liveness plus per-dependency probes so a deployment can tell
  * WHICH dependency is broken (DB vs Redis vs RPC) instead of a blanket 500.
@@ -23,8 +54,14 @@ export class HealthController {
     maxRetriesPerRequest: 1,
     retryStrategy: () => null,
   });
+  // "Connection is closed." masks the socket-level failure — keep the real one
+  private lastRedisError: unknown = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    this.redis.on("error", (error) => {
+      this.lastRedisError = error;
+    });
+  }
 
   @Get()
   liveness() {
@@ -58,15 +95,16 @@ export class HealthController {
       return {
         ok: true,
         latencyMs: Date.now() - started,
-        // scheme only — never the credentialed URL
-        scheme: (process.env.REDIS_URL ?? "redis://localhost:6379").split("://")[0],
+        target: sanitizedTarget(process.env.REDIS_URL),
       };
     } catch (error) {
-      return {
-        ok: false,
-        scheme: (process.env.REDIS_URL ?? "(unset)").split("://")[0],
-        error: error instanceof Error ? error.message : String(error),
-      };
+      const described = describeError(error);
+      if (this.lastRedisError) {
+        described.causes.push(
+          ...describeError(this.lastRedisError).causes.map((c) => `socket: ${c}`),
+        );
+      }
+      return { ok: false, target: sanitizedTarget(process.env.REDIS_URL), ...described };
     }
   }
 
@@ -81,7 +119,11 @@ export class HealthController {
       const slot = await timeout(connection.getSlot(), 8000);
       return { ok: true, latencyMs: Date.now() - started, slot };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return {
+        ok: false,
+        target: sanitizedTarget(process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com"),
+        ...describeError(error),
+      };
     }
   }
 }
