@@ -10,6 +10,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import IORedis from "ioredis";
 import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "./mail.service";
 
 const OTP_TTL_SECONDS = 300;
 const OTP_MAX_ATTEMPTS = 5;
@@ -33,6 +34,7 @@ export class AuthService implements OnApplicationShutdown {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly mail: MailService,
   ) {
     this.redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
       maxRetriesPerRequest: 2,
@@ -76,11 +78,20 @@ export class AuthService implements OnApplicationShutdown {
       await this.redis.set(`${key}:attempts`, "0", "EX", OTP_TTL_SECONDS);
     });
 
-    // TODO(staging): send via email provider. Never log the code outside local.
-    if ((process.env.APP_ENV ?? "local") === "local") {
+    // Demo/E2E accounts keep the one-click devCode flow even in staging;
+    // OTP_DEVCODE_DOMAINS is a comma-separated email-domain allowlist.
+    const domain = email.toLowerCase().split("@")[1] ?? "";
+    const devCodeDomains = (process.env.OTP_DEVCODE_DOMAINS ?? "")
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    if ((process.env.APP_ENV ?? "local") === "local" || devCodeDomains.includes(domain)) {
       this.logger.debug(`OTP for ${email}: ${code}`);
       return { sent: true, devCode: code };
     }
+
+    // Never expose the code outside local/allowlist — real delivery only.
+    await this.mail.sendOtp(email, code);
     return { sent: true };
   }
 

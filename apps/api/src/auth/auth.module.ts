@@ -5,6 +5,7 @@ import { AccessService } from "./access.service";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./jwt-auth.guard";
+import { MailService } from "./mail.service";
 
 @Global()
 @Module({
@@ -15,7 +16,7 @@ import { JwtAuthGuard } from "./jwt-auth.guard";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AccessService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
+  providers: [AuthService, AccessService, MailService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
   exports: [AccessService],
 })
 export class AuthModule {}
