@@ -1,9 +1,9 @@
 {
   "usdcMint": "4R3s4BJLvBMKKgWFxsxPTCnZDuDK9dB46WJKPeaJMrDF",
   "programId": "A2snJHtFRK8wKawieDTQy6wMReJCP3BxU6i6y9aECJhi",
-  "venueId": "79c243d9-a753-4415-bb5d-3647f357be1c",
-  "venuePda": "3od2yjtkAkLurXorNr3shbyArpxNsx2Qqcob527bHwTk",
-  "vaultAuthorityPda": "AR9tcCacBetFmvq85impCoerHV8HfUkB3tKPgCudqKpW",
-  "venueVault": "G3wbZGr4cMvyHj1dcmQPbMsLH41Evc58itHtzJPtAwGZ",
+  "venueId": "47fe956c-1142-495a-bb37-96ef90b8789c",
+  "venuePda": "GjQoXwBRDndmzMg4suYiGpBF9YqbUZMm3L6TVVy1UqWw",
+  "vaultAuthorityPda": "BPJF5C9MpF3rhzBficpozHY5Cxt2VxyGYKJBquz9sFuq",
+  "venueVault": "BqEkHKTap7AKt17R8MCh9ax8xz16tpJPJzY2Zus7qLHy",
   "venueAuthority": "8uBouRGv78yhVRHEcdmd385YTLV9WuFJNhmprZdNZU8k"
 }
