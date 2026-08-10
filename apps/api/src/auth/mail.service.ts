@@ -19,51 +19,88 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly host = process.env.SMTP_HOST;
   private readonly port = Number(process.env.SMTP_PORT ?? 587);
+  private readonly brevoApiKey = process.env.BREVO_API_KEY;
   private readonly from =
     process.env.EMAIL_FROM ?? process.env.SMTP_USER ?? "no-reply@serveproof.local";
 
   get enabled(): boolean {
-    return Boolean(this.host);
+    return Boolean(this.brevoApiKey || this.host);
+  }
+
+  private otpBody(code: string): { subject: string; text: string } {
+    return {
+      subject: `[ServeProof] 로그인 코드 ${code}`,
+      text: [
+        `ServeProof 로그인 인증 코드: ${code}`,
+        "",
+        "이 코드는 5분간 유효하며, 5회 이상 틀리면 새 코드를 요청해야 합니다.",
+        "본인이 요청하지 않았다면 이 메일을 무시하세요.",
+        "",
+        `Your ServeProof login code is ${code}. It expires in 5 minutes.`,
+      ].join("\n"),
+    };
   }
 
   async sendOtp(to: string, code: string): Promise<void> {
-    if (!this.host) {
-      throw new ServiceUnavailableException("Email delivery is not configured (SMTP_HOST unset)");
+    if (!this.enabled) {
+      throw new ServiceUnavailableException(
+        "Email delivery is not configured (BREVO_API_KEY / SMTP_HOST unset)",
+      );
     }
     try {
-      const ipv4Host = isIP(this.host) ? this.host : (await resolve4(this.host))[0];
-      if (!ipv4Host) throw new Error(`no IPv4 address for ${this.host}`);
-      const transporter = createTransport({
-        host: ipv4Host,
-        tls: { servername: this.host },
-        port: this.port,
-        secure: this.port === 465,
-        connectionTimeout: 15_000,
-        auth: process.env.SMTP_USER
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-          : undefined,
-      });
-      try {
-        await transporter.sendMail({
-          from: `ServeProof <${this.from}>`,
-          to,
-          subject: `[ServeProof] 로그인 코드 ${code}`,
-          text: [
-            `ServeProof 로그인 인증 코드: ${code}`,
-            "",
-            "이 코드는 5분간 유효하며, 5회 이상 틀리면 새 코드를 요청해야 합니다.",
-            "본인이 요청하지 않았다면 이 메일을 무시하세요.",
-            "",
-            `Your ServeProof login code is ${code}. It expires in 5 minutes.`,
-          ].join("\n"),
-        });
-      } finally {
-        transporter.close();
+      // Railway blocks outbound SMTP (25/465/587) below the Pro plan, so an
+      // HTTPS API is the reliable path there; SMTP remains for local/Pro.
+      if (this.brevoApiKey) {
+        await this.sendViaBrevo(to, code);
+        return;
       }
+      await this.sendViaSmtp(to, code);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`OTP mail send failed for ${to}: ${message}`);
       throw new ServiceUnavailableException(`OTP email delivery failed: ${message}`);
+    }
+  }
+
+  private async sendViaBrevo(to: string, code: string): Promise<void> {
+    const { subject, text } = this.otpBody(code);
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": this.brevoApiKey as string, "content-type": "application/json" },
+      body: JSON.stringify({
+        sender: { name: "ServeProof", email: this.from },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Brevo ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+  }
+
+  private async sendViaSmtp(to: string, code: string): Promise<void> {
+    if (!this.host) {
+      throw new ServiceUnavailableException("Email delivery is not configured (SMTP_HOST unset)");
+    }
+    const ipv4Host = isIP(this.host) ? this.host : (await resolve4(this.host))[0];
+    if (!ipv4Host) throw new Error(`no IPv4 address for ${this.host}`);
+    const transporter = createTransport({
+      host: ipv4Host,
+      tls: { servername: this.host },
+      port: this.port,
+      secure: this.port === 465,
+      connectionTimeout: 15_000,
+      auth: process.env.SMTP_USER
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        : undefined,
+    });
+    const { subject, text } = this.otpBody(code);
+    try {
+      await transporter.sendMail({ from: `ServeProof <${this.from}>`, to, subject, text });
+    } finally {
+      transporter.close();
     }
   }
 }
