@@ -312,7 +312,8 @@ CI는 PostgreSQL·Redis service container를 기동한 뒤 migration, lint, buil
 | API         | Railway                      | [serveproofapi-production.up.railway.app](https://serveproofapi-production.up.railway.app/) | 공개, `/health` HTTP 200 확인 |
 | Worker      | Railway                      | public domain 없음                                                                          | 내부 BullMQ consumer          |
 | PostgreSQL  | Supabase                     | `DATABASE_URL`로 API/Worker 연결                                                            | staging DB                    |
-| Redis       | Upstash Redis                | TLS `REDIS_URL`로 API/Worker 연결                                                           | BullMQ/OTP/OAuth state        |
+| Redis       | Railway Redis                | internal `REDIS_URL` + `?family=0`으로 API/Worker 연결                                      | BullMQ/OTP/OAuth state        |
+| OTP Email   | Brevo (HTTPS API)            | `BREVO_API_KEY` (Railway는 Pro 미만 SMTP 차단)                                              | 실발송 검증 완료              |
 | Blockchain  | Solana Devnet                | 기존 Anchor program + tUSDC                                                                 | Devnet 전용                   |
 | PDF Storage | Railway API local filesystem | `var/reports`                                                                               | 영구 storage 이전 필요        |
 
@@ -320,14 +321,14 @@ CI는 PostgreSQL·Redis service container를 기동한 뒤 migration, lint, buil
 
 ```text
 Vercel Web ──HTTPS──→ Railway API ──→ Supabase PostgreSQL
-                          │          └─→ Upstash Redis/BullMQ
-                          │
+                          │          ├─→ Railway Redis/BullMQ
+                          │          └─→ Brevo (OTP email, HTTPS)
 Railway Worker (internal) ┘─────────→ Solana Devnet / Square Sandbox
 ```
 
 ### 1. Railway 프로젝트
 
-Railway에 같은 Git 저장소를 연결해 `serveproof-api`와 `serveproof-worker` 서비스를 운용합니다. DB와 Redis는 Railway 내부 서비스가 아니라 각각 Supabase와 Upstash를 사용합니다. shared workspace package가 있으므로 두 서비스 모두 repository root `/`를 사용합니다.
+Railway에 같은 Git 저장소를 연결해 `serveproof-api`, `serveproof-worker`, Redis 서비스를 운용합니다. DB는 Supabase를 사용합니다. (Upstash free tier는 BullMQ 폴링이 500K command 한도를 소진해 Railway Redis로 교체했습니다.) shared workspace package가 있으므로 두 서비스 모두 repository root `/`를 사용합니다.
 
 API 서비스:
 
@@ -351,10 +352,13 @@ Migration은 API 서비스의 pre-deploy에서만 실행해 API와 worker가 동
 
 ```dotenv
 NODE_ENV=production
-APP_ENV=local
+APP_ENV=staging
 DATABASE_URL=<Supabase PostgreSQL session-pooler URI>
-REDIS_URL=<Upstash Redis rediss:// URI>
+REDIS_URL=${{Redis.REDIS_URL}}?family=0   # Railway internal DNS는 IPv6 전용
 AUTH_SECRET=<strong random secret>
+BREVO_API_KEY=<Brevo API key (xkeysib-…)>  # API 서비스만 필요
+EMAIL_FROM=<Brevo에서 인증한 발신자 이메일>
+OTP_DEVCODE_DOMAINS=demo.serveproof.local,staging.serveproof.local
 REPORT_SIGNING_KEY=<different strong random secret>
 PROVIDER_ENCRYPTION_KEY=<different strong random secret>
 WEB_ORIGIN=https://serveproof-web.vercel.app
@@ -373,7 +377,7 @@ SQUARE_REDIRECT_URI=https://serveproofapi-production.up.railway.app/providers/sq
 
 Railway가 런타임 `PORT`를 자동 주입하므로 배포 환경에 `API_PORT`를 별도로 고정하지 않습니다. API는 `PORT`를 우선 사용하고, 로컬에서만 `API_PORT=3001`을 사용합니다.
 
-`APP_ENV=local`은 이메일 provider 없이 OTP를 화면에 표시하기 위한 **임시 공개 데모 설정**입니다. OTP가 API 응답에 포함되므로 접근 기간과 대상을 제한하세요. 실제 staging/production에서는 이메일 provider를 구현한 뒤 `APP_ENV=staging` 또는 `production`으로 바꿔야 합니다.
+OTP 이메일은 Brevo HTTPS API로 발송합니다 (Railway는 Pro 플랜 미만에서 아웃바운드 SMTP 25/465/587을 차단하므로 SMTP는 로컬/Pro 전용 폴백입니다). `OTP_DEVCODE_DOMAINS`에 등록된 도메인의 이메일과 `APP_ENV=local` 환경에서만 응답에 `devCode`가 포함되어 데모/E2E 계정은 원클릭 로그인이 유지됩니다. 그 외 주소는 실제 이메일로만 코드를 받습니다.
 
 API가 처음 정상 기동된 뒤 Railway one-off shell에서 seed를 한 번 실행합니다.
 
@@ -430,7 +434,7 @@ curl https://serveproofapi-production.up.railway.app/health
 ### 데모 배포 제한
 
 - PDF는 현재 API container의 `var/reports`에 저장됩니다. Railway 재배포/재시작 후 사라질 수 있으므로 영구 데모에는 S3 호환 private bucket 구현이 필요합니다.
-- 이메일 OTP provider가 아직 없어 공개 데모에서는 `APP_ENV=local`에 의존합니다.
+- 이메일 OTP는 Brevo 무료 tier(일 300통)로 발송합니다. 발신자가 gmail.com 주소라 일부 수신함에서 스팸 분류될 수 있으며, 도메인 확보 후 Brevo 도메인 인증을 추가하면 해결됩니다.
 - API와 worker의 structured logging/Sentry 및 완전한 dependency health endpoint는 Phase 6 작업입니다.
 - Devnet RPC rate limit을 피하려면 전용 RPC를 권장합니다.
 - Devnet authority와 tUSDC는 실제 자산용 보안 구성이 아닙니다.
