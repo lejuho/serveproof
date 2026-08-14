@@ -28,6 +28,15 @@ export class OrganizationsService {
     if (!user) {
       throw new NotFoundException(`No user with email ${input.email}; they must log in once first`);
     }
+    // OTP signup defaults GlobalRole to WORKER, which routes the web login to
+    // /me. Staff membership implies the manager surface, so upgrade (never
+    // downgrade) the global role; takes effect on their next login.
+    if (user.role === "WORKER" && input.role !== "VIEWER") {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { role: "VENUE_MANAGER" },
+      });
+    }
     return this.prisma.organizationMember.upsert({
       where: { organizationId_userId: { organizationId, userId: user.id } },
       update: { role: input.role },
