@@ -152,8 +152,10 @@ export default function MyIncomePage() {
       start.setMonth(start.getMonth() - 3); // 최근 3개월 (§26 step 20)
       const expiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+      // 발급까지 서버가 한 호출로 처리 — 수신자 이메일이 미발급 링크를 받는 틈이 없다
       const created = await api<{
         grant: { id: string };
+        report: { id: string };
         shareUrl: string;
         emailSent?: boolean;
       }>("/disclosures", {
@@ -165,6 +167,7 @@ export default function MyIncomePage() {
           dateRangeEnd: now.toISOString(),
           expiresAt: expiry.toISOString(),
           allowDownload: true,
+          autoIssue: true,
           ...(level === "LEVEL_1" ? { thresholdUsdCents: 300000 } : {}),
           ...(recipientEmail.trim() ? { recipientEmail: recipientEmail.trim() } : {}),
         },
@@ -172,12 +175,8 @@ export default function MyIncomePage() {
       setEmailStatus(
         created.emailSent === undefined ? null : created.emailSent ? "sent" : "failed",
       );
-      const issued = await api<{ report: { id: string } }>("/reports", {
-        method: "POST",
-        body: { disclosureGrantId: created.grant.id, shareUrl: created.shareUrl },
-      });
       setShareUrl(created.shareUrl);
-      setLastReportId(issued.report.id);
+      setLastReportId(created.report.id);
       setQrDataUrl(await QRCode.toDataURL(created.shareUrl, { width: 180, margin: 1 }));
       refreshGrants();
     } catch (e) {

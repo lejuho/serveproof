@@ -26,6 +26,9 @@ const createGrantSchema = z.object({
   recipientEmail: z.email().optional(),
   allowDownload: z.boolean().optional(),
   thresholdUsdCents: z.number().int().positive().optional(),
+  // issue the report in the same call — required for recipient email delivery
+  // to never race ahead of report issuance
+  autoIssue: z.boolean().optional(),
 });
 
 const issueReportSchema = z.object({
@@ -50,6 +53,13 @@ export class DisclosureController {
     const input = parseBody(createGrantSchema, body);
     const { grant, rawToken } = await this.disclosure.createGrant(user.id, input);
     const shareUrl = `${WEB_ORIGIN}/verify/${rawToken}`;
+
+    // Issue before the email goes out so the recipient never lands on an
+    // unissued report.
+    const report =
+      input.autoIssue || input.recipientEmail
+        ? (await this.disclosure.issueReport(user.id, grant.id, shareUrl)).report
+        : undefined;
 
     // The raw token only exists right now, so recipient delivery must happen
     // here. A mail failure must not lose the one-time link — report it instead.
@@ -82,6 +92,7 @@ export class DisclosureController {
     }
     return {
       grant,
+      report,
       shareUrl,
       emailSent,
       emailError,
