@@ -126,9 +126,8 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
 
       // No settlement PDA after 10+ minutes. Deciding failure is safe as long
       // as nothing can still land: the blockhash is long expired, and even if
-      // a ghost tx did land later, the PDA would appear and a later sweep
-      // would flip this back via finalizeFromChain (settle is idempotent
-      // on-chain, so a retry payment can never double-pay).
+      // a ghost tx did land later, buildTransaction rechecks the PDA before a
+      // retry (settle is also idempotent on-chain, so it cannot double-pay).
       if (!payout.txSignature) {
         // INITIATED (never submitted) or event-indexer CONFIRMED whose tx was
         // dropped from a fork before the signature was ever persisted
@@ -142,6 +141,21 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
       ).value[0];
       if (!status) {
         await this.markFailed(payout.id, payout.allocationId, "transaction_dropped");
+        continue;
+      }
+      if (status.err) {
+        await this.markFailed(
+          payout.id,
+          payout.allocationId,
+          `transaction_failed:${JSON.stringify(status.err)}`,
+        );
+        continue;
+      }
+      if (status.confirmationStatus === "finalized") {
+        // A finalized successful signature is immutable. If the expected PDA
+        // is still absent after the grace period, this signature did not
+        // produce the settlement and retrying the logical payment is safe.
+        await this.markFailed(payout.id, payout.allocationId, "finalized_without_settlement");
       }
     }
     if (stale.length > 0) {

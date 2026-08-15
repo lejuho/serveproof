@@ -282,8 +282,8 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
   "dash.progress.failed": { ko: "실패", en: "Failed" },
   "dash.progress.verifying": {
-    ko: "이전 시도를 온체인에서 검증 중 — 이중지급 방지를 위해 최대 10분 후 자동 정리되면 다시 시도하세요",
-    en: "Verifying the previous attempt on-chain — retry after auto-cleanup (≤10 min, double-pay guard)",
+    ko: "이전 시도를 온체인에서 검증 중 — 이중지급 방지를 위해 자동 정리 후 다시 시도하세요 (정상 운영 시 약 10~11분)",
+    en: "Verifying the previous attempt on-chain — retry after automatic reconciliation (typically 10–11 min while services are healthy)",
   },
   "dash.payout.refPlaceholder": { ko: "급여 이체 참조번호", en: "Payroll transfer reference" },
   "dash.source.label": { ko: "데이터 소스", en: "Data sources" },

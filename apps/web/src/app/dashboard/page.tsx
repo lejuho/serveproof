@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError, clearTokens, getToken } from "@/lib/api";
 import { connectWallet, signTransactionBase64 } from "@/lib/wallet";
@@ -62,8 +62,26 @@ interface Batch {
 }
 interface Payout {
   id: string;
-  status: string;
+  status:
+    | "CREATED"
+    | "INITIATED"
+    | "SUBMITTED"
+    | "CONFIRMED"
+    | "FINALIZED"
+    | "FAILED"
+    | "REVERSED"
+    | "CORRECTED";
   txSignature: string | null;
+}
+
+const PAYOUT_VERIFICATION_ERRORS = [
+  "Payout is CONFIRMED",
+  "Payout is SUBMITTED",
+  "Settlement already exists on-chain",
+];
+
+function isPayoutVerificationError(message: string): boolean {
+  return PAYOUT_VERIFICATION_ERRORS.some((fragment) => message.includes(fragment));
 }
 
 function usd(cents: number): string {
@@ -102,6 +120,9 @@ export default function DashboardPage() {
   const [venueSigner, setVenueSigner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // React state does not update synchronously, so `busy` alone cannot stop two
+  // clicks in the same render frame from opening parallel wallet-sign flows.
+  const payoutLocks = useRef(new Set<string>());
 
   const guard = useCallback(
     (e: unknown) => {
@@ -251,28 +272,50 @@ export default function DashboardPage() {
     setPayoutProgress((prev) => ({ ...prev, [allocationId]: message }));
 
   /** Spec §29.4 flow: create → unsigned tx → wallet signs → submit → poll. */
-  const payUsdc = (allocationId: string) =>
-    run(async () => {
-      try {
-        await payUsdcInner(allocationId);
-      } catch (e) {
-        // 실패를 그 행에 그대로 표시 — "생성 중…"으로 고착되지 않게
-        const message = e instanceof Error ? e.message : String(e);
-        // §29.7 가드: 직전 시도의 온체인 검증이 끝나기 전엔 재서명 불가
-        setProgress(
-          allocationId,
-          message.includes("Payout is CONFIRMED") || message.includes("Payout is SUBMITTED")
-            ? t("dash.progress.verifying")
-            : `${t("dash.progress.failed")}: ${message}`,
-        );
-        throw e;
+  const payUsdc = async (allocationId: string) => {
+    if (payoutLocks.current.has(allocationId)) return;
+    payoutLocks.current.add(allocationId);
+    setBusy(true);
+    setError(null);
+    try {
+      await payUsdcInner(allocationId);
+    } catch (e) {
+      // 실패를 그 행에 그대로 표시 — "생성 중…"으로 고착되지 않게
+      const message = e instanceof Error ? e.message : String(e);
+      if (isPayoutVerificationError(message)) {
+        // §29.7 가드는 정상적인 안전 상태다. 행에는 안내문을 표시하되
+        // 같은 409 영어 원문을 전역 오류 Callout에 다시 노출하지 않는다.
+        setProgress(allocationId, t("dash.progress.verifying"));
+        await refreshBatch().catch(guard);
+      } else {
+        setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
+        guard(e);
       }
-    });
+    } finally {
+      payoutLocks.current.delete(allocationId);
+      setBusy(false);
+    }
+  };
 
   const payUsdcInner = async (allocationId: string) => {
     {
       setProgress(allocationId, t("dash.progress.create"));
       const payout = await api<Payout>("/payouts", { method: "POST", body: { allocationId } });
+
+      // POST /payouts is idempotent and may return an existing attempt. Never
+      // rebuild or request another signature while that attempt is resolving.
+      if (["SUBMITTED", "CONFIRMED"].includes(payout.status)) {
+        setProgress(allocationId, t("dash.progress.verifying"));
+        await refreshBatch();
+        refreshUnmapped();
+        return;
+      }
+      if (payout.status === "FINALIZED") {
+        setProgress(allocationId, `${t("dash.progress.onchain")} FINALIZED`);
+        await refreshBatch();
+        refreshUnmapped();
+        return;
+      }
 
       setProgress(allocationId, t("dash.progress.build"));
       const tx = await api<{ transactionBase64: string; signer: string }>(
@@ -288,12 +331,17 @@ export default function DashboardPage() {
         body: { signedTransactionBase64: signed },
       });
 
+      let terminal = false;
       for (let i = 0; i < 30; i++) {
         const current = await api<Payout>(`/payouts/${payout.id}`);
         setProgress(allocationId, `${t("dash.progress.onchain")} ${current.status}`);
-        if (["FINALIZED", "FAILED"].includes(current.status)) break;
+        if (["FINALIZED", "FAILED"].includes(current.status)) {
+          terminal = true;
+          break;
+        }
         await new Promise((r) => setTimeout(r, 3000));
       }
+      if (!terminal) setProgress(allocationId, t("dash.progress.verifying"));
       await refreshBatch();
       refreshUnmapped();
     }

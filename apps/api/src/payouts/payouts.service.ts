@@ -68,6 +68,27 @@ export class PayoutsService implements OnModuleDestroy {
     const paymentId = allocation.id;
     const existing = await this.prisma.payout.findUnique({ where: { paymentId } });
     if (existing && !["FAILED"].includes(existing.status)) {
+      // Idempotent retries must also heal the denormalized allocation status.
+      // A dropped browser response or a CONFIRMED fork event can otherwise
+      // leave the dashboard saying UNPAID while the payout is still in flight.
+      const allocationStatus =
+        existing.status === "FINALIZED"
+          ? "PAID"
+          : ["CREATED", "INITIATED", "SUBMITTED", "CONFIRMED"].includes(existing.status)
+            ? "PENDING"
+            : null;
+      if (
+        allocationStatus &&
+        (allocation.payoutStatus !== allocationStatus || allocation.payoutRail !== "USDC")
+      ) {
+        await this.prisma.workerAllocation.update({
+          where: { id: allocation.id },
+          data: { payoutRail: "USDC", payoutStatus: allocationStatus },
+        });
+        if (allocationStatus === "PAID") {
+          await this.refreshBatchPaymentStatus(allocation.batchId);
+        }
+      }
       return existing; // idempotent create
     }
 
@@ -138,8 +159,8 @@ export class PayoutsService implements OnModuleDestroy {
       usdcMint: parsePubkey(usdcMint),
     });
 
-    await this.prisma.payout.update({
-      where: { id: payoutId },
+    const claimed = await this.prisma.payout.updateMany({
+      where: { id: payoutId, status: { in: ["CREATED", "INITIATED", "FAILED"] } },
       data: {
         status: "INITIATED",
         settlementPda: built.settlementPda,
@@ -147,6 +168,12 @@ export class PayoutsService implements OnModuleDestroy {
         failedReason: null,
       },
     });
+    if (claimed.count === 0) {
+      const current = await this.prisma.payout.findUnique({ where: { id: payoutId } });
+      throw new ConflictException(
+        `Payout is ${current?.status ?? "UNKNOWN"}; cannot rebuild transaction`,
+      );
+    }
 
     return {
       payoutId,
@@ -168,6 +195,12 @@ export class PayoutsService implements OnModuleDestroy {
   async submitSigned(payoutId: string, signedTransactionBase64: string) {
     const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
     if (!payout) throw new NotFoundException(`Payout ${payoutId} not found`);
+    // A browser retry or a second tab may submit after the first request has
+    // already persisted/broadcast the transaction. Treat that as an
+    // idempotent success and, critically, never broadcast the second payload.
+    if (["SUBMITTED", "CONFIRMED", "FINALIZED"].includes(payout.status)) {
+      return payout;
+    }
     if (payout.status !== "INITIATED") {
       throw new ConflictException(`Payout is ${payout.status}; expected INITIATED`);
     }
@@ -177,10 +210,18 @@ export class PayoutsService implements OnModuleDestroy {
     if (!signatureBytes) throw new BadRequestException("Transaction is not signed");
     const signature = encodeBase58(Uint8Array.from(signatureBytes));
 
-    const updated = await this.prisma.payout.update({
-      where: { id: payoutId },
+    const claimed = await this.prisma.payout.updateMany({
+      where: { id: payoutId, status: "INITIATED" },
       data: { status: "SUBMITTED", txSignature: signature },
     });
+    if (claimed.count === 0) {
+      const current = await this.prisma.payout.findUnique({ where: { id: payoutId } });
+      if (current && ["SUBMITTED", "CONFIRMED", "FINALIZED"].includes(current.status)) {
+        return current;
+      }
+      throw new ConflictException(`Payout is ${current?.status ?? "UNKNOWN"}; expected INITIATED`);
+    }
+    const updated = await this.prisma.payout.findUniqueOrThrow({ where: { id: payoutId } });
     await this.confirmationQueue.add(
       "confirm",
       { payoutId, signature },
