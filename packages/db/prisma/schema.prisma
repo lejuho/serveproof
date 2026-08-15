@@ -458,6 +458,11 @@ model Payout {
   externalReference String?
   txSignature       String?
   settlementPda     String?
+  recentBlockhash   String?
+  lastValidBlockHeight BigInt?
+  signedTransactionBase64 String?
+  lastBroadcastAt   DateTime?
+  broadcastAttempts Int @default(0)
   slot              BigInt?
   blockTime         DateTime?
   initiatedAt       DateTime?

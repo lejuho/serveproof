@@ -6,7 +6,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
 } from "@nestjs/common";
-import { centsToUsdcBaseUnits, encodeBase58, QUEUES } from "@serveproof/shared";
+import { centsToUsdcBaseUnits, encodeBase58, isBlockhashExpired, QUEUES } from "@serveproof/shared";
 import { buildSettlePayoutTx, fetchSettlementRecord, parsePubkey } from "@serveproof/solana";
 import { Connection, Transaction } from "@solana/web3.js";
 import { Queue } from "bullmq";
@@ -92,6 +92,18 @@ export class PayoutsService implements OnModuleDestroy {
       return existing; // idempotent create
     }
 
+    // FAILED means retryable, but the previous signed transaction may still
+    // be accepted until its blockhash expires. Never issue a new blockhash in
+    // that window, even after a deterministic-looking RPC failure.
+    if (existing?.lastValidBlockHeight !== null && existing?.lastValidBlockHeight !== undefined) {
+      const currentBlockHeight = await this.connection.getBlockHeight("confirmed");
+      if (!isBlockhashExpired(currentBlockHeight, existing.lastValidBlockHeight)) {
+        throw new ConflictException(
+          `Previous payout blockhash is still valid through height ${existing.lastValidBlockHeight.toString()}`,
+        );
+      }
+    }
+
     const amountBaseUnits = centsToUsdcBaseUnits(allocation.netAllocatedUsdCents);
     const data = {
       paymentId,
@@ -105,6 +117,16 @@ export class PayoutsService implements OnModuleDestroy {
       amountBaseUnits,
       amountUsdCents: allocation.netAllocatedUsdCents,
       status: "CREATED" as const,
+      txSignature: null,
+      settlementPda: null,
+      recentBlockhash: null,
+      lastValidBlockHeight: null,
+      signedTransactionBase64: null,
+      lastBroadcastAt: null,
+      broadcastAttempts: 0,
+      initiatedAt: null,
+      settledAt: null,
+      failedReason: null,
     };
     const [payout] = await this.prisma.$transaction([
       existing
@@ -136,6 +158,14 @@ export class PayoutsService implements OnModuleDestroy {
     if (onchain) {
       throw new ConflictException("Settlement already exists on-chain; run reconciliation");
     }
+    if (["INITIATED", "FAILED"].includes(payout.status) && payout.lastValidBlockHeight !== null) {
+      const currentBlockHeight = await this.connection.getBlockHeight("confirmed");
+      if (!isBlockhashExpired(currentBlockHeight, payout.lastValidBlockHeight)) {
+        throw new ConflictException(
+          `Previous payout blockhash is still valid through height ${payout.lastValidBlockHeight.toString()}`,
+        );
+      }
+    }
 
     const venue = await this.prisma.venue.findUnique({ where: { id: payout.venueId } });
     if (!venue?.payoutSignerWallet) {
@@ -164,6 +194,12 @@ export class PayoutsService implements OnModuleDestroy {
       data: {
         status: "INITIATED",
         settlementPda: built.settlementPda,
+        recentBlockhash: built.blockhash,
+        lastValidBlockHeight: BigInt(built.lastValidBlockHeight),
+        signedTransactionBase64: null,
+        txSignature: null,
+        lastBroadcastAt: null,
+        broadcastAttempts: 0,
         initiatedAt: new Date(),
         failedReason: null,
       },
@@ -204,15 +240,49 @@ export class PayoutsService implements OnModuleDestroy {
     if (payout.status !== "INITIATED") {
       throw new ConflictException(`Payout is ${payout.status}; expected INITIATED`);
     }
+    if (!payout.recentBlockhash || payout.lastValidBlockHeight === null) {
+      throw new ConflictException("Payout is missing its blockhash validity metadata; rebuild it");
+    }
 
     const tx = Transaction.from(Buffer.from(signedTransactionBase64, "base64"));
+    if (tx.recentBlockhash !== payout.recentBlockhash) {
+      throw new BadRequestException("Signed transaction blockhash does not match this payout");
+    }
     const signatureBytes = tx.signatures[0]?.signature;
     if (!signatureBytes) throw new BadRequestException("Transaction is not signed");
     const signature = encodeBase58(Uint8Array.from(signatureBytes));
+    const raw = tx.serialize();
+    const currentBlockHeight = await this.connection.getBlockHeight("confirmed");
+    if (isBlockhashExpired(currentBlockHeight, payout.lastValidBlockHeight)) {
+      const expired = await this.prisma.payout.updateMany({
+        where: { id: payoutId, status: "INITIATED" },
+        data: { status: "FAILED", failedReason: "blockhash_expired_before_submit" },
+      });
+      if (expired.count > 0) {
+        await this.prisma.workerAllocation.update({
+          where: { id: payout.allocationId },
+          data: { payoutStatus: "FAILED" },
+        });
+        throw new ConflictException(
+          "Payout blockhash expired before submission; rebuild and sign again",
+        );
+      }
+      const current = await this.prisma.payout.findUnique({ where: { id: payoutId } });
+      if (current && ["SUBMITTED", "CONFIRMED", "FINALIZED"].includes(current.status)) {
+        return current;
+      }
+      throw new ConflictException(`Payout is ${current?.status ?? "UNKNOWN"}; expected INITIATED`);
+    }
 
     const claimed = await this.prisma.payout.updateMany({
       where: { id: payoutId, status: "INITIATED" },
-      data: { status: "SUBMITTED", txSignature: signature },
+      data: {
+        status: "SUBMITTED",
+        txSignature: signature,
+        signedTransactionBase64: raw.toString("base64"),
+        lastBroadcastAt: new Date(),
+        broadcastAttempts: 1,
+      },
     });
     if (claimed.count === 0) {
       const current = await this.prisma.payout.findUnique({ where: { id: payoutId } });
@@ -222,39 +292,37 @@ export class PayoutsService implements OnModuleDestroy {
       throw new ConflictException(`Payout is ${current?.status ?? "UNKNOWN"}; expected INITIATED`);
     }
     const updated = await this.prisma.payout.findUniqueOrThrow({ where: { id: payoutId } });
-    await this.confirmationQueue.add(
-      "confirm",
-      { payoutId, signature },
-      { attempts: 10, backoff: { type: "exponential", delay: 3000 } },
-    );
 
     // Broadcast with a hard timeout — a hanging public RPC must not hang the
     // HTTP request. On timeout the tx may still propagate; the confirmation
     // job / reconcile sweep resolves the true outcome either way.
-    const raw = tx.serialize();
     try {
       await Promise.race([
-        this.connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 5 }),
+        this.connection.sendRawTransaction(raw, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("rpc_send_timeout")), 15_000)),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message !== "rpc_send_timeout") {
-        // Preflight/broadcast rejected outright — safe to fail now (no PDA yet).
-        await this.prisma.$transaction([
-          this.prisma.payout.update({
-            where: { id: payoutId },
-            data: { status: "FAILED", failedReason: message.slice(0, 500) },
-          }),
-          this.prisma.workerAllocation.update({
-            where: { id: payout.allocationId },
-            data: { payoutStatus: "FAILED" },
-          }),
-        ]);
-        throw new BadRequestException(`Transaction rejected: ${message}`);
-      }
-      // timeout — leave SUBMITTED; background jobs take over from here
+      // Any send error is ambiguous: the RPC may have forwarded the bytes
+      // before its response failed. Keep SUBMITTED and let the worker resend
+      // the exact same transaction until blockhash expiry proves it cannot land.
+      await this.prisma.payout.updateMany({
+        where: { id: payoutId, status: "SUBMITTED" },
+        data: { failedReason: `initial_broadcast:${message}`.slice(0, 500) },
+      });
     }
+    // Enqueue only after the initial send attempt. Enqueuing earlier lets the
+    // worker rebroadcast concurrently and can turn the API's preflight result
+    // into a misleading duplicate/already-processed failure.
+    await this.confirmationQueue.add(
+      "confirm",
+      { payoutId, signature },
+      { attempts: 100, backoff: { type: "fixed", delay: 2000 } },
+    );
     return updated;
   }
 

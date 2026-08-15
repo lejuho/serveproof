@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AnchorProvider, BN, Program, Wallet } from "@anchor-lang/core";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
+import { Commitment, Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 
 const idl = JSON.parse(readFileSync(join(__dirname, "idl.json"), "utf8"));
 
@@ -59,9 +59,9 @@ export function deriveSettlementPda(programId: PublicKey, paymentId: string): Pu
 }
 
 /** Read-only Program instance (dummy wallet — never signs). */
-export function getProgram(connection: Connection): Program {
+export function getProgram(connection: Connection, commitment: Commitment = "confirmed"): Program {
   const provider = new AnchorProvider(connection, new Wallet(Keypair.generate()), {
-    commitment: "confirmed",
+    commitment,
   });
   return new Program(idl as never, provider);
 }
@@ -143,8 +143,9 @@ export interface SettlementRecordView {
 export async function fetchSettlementRecord(
   connection: Connection,
   paymentId: string,
+  commitment: Commitment = "confirmed",
 ): Promise<SettlementRecordView | null> {
-  const program = getProgram(connection);
+  const program = getProgram(connection, commitment);
   const pda = deriveSettlementPda(program.programId, paymentId);
   const record = await (
     program.account as never as {

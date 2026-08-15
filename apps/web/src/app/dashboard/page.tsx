@@ -78,10 +78,16 @@ const PAYOUT_VERIFICATION_ERRORS = [
   "Payout is CONFIRMED",
   "Payout is SUBMITTED",
   "Settlement already exists on-chain",
+  "Previous payout blockhash is still valid",
+  "Payout transaction blockhash is still valid",
 ];
 
 function isPayoutVerificationError(message: string): boolean {
   return PAYOUT_VERIFICATION_ERRORS.some((fragment) => message.includes(fragment));
+}
+
+function isPayoutBlockhashExpiredError(message: string): boolean {
+  return message.includes("blockhash expired before submission");
 }
 
 function usd(cents: number): string {
@@ -287,6 +293,9 @@ export default function DashboardPage() {
         // 같은 409 영어 원문을 전역 오류 Callout에 다시 노출하지 않는다.
         setProgress(allocationId, t("dash.progress.verifying"));
         await refreshBatch().catch(guard);
+      } else if (isPayoutBlockhashExpiredError(message)) {
+        setProgress(allocationId, t("dash.progress.expired"));
+        await refreshBatch().catch(guard);
       } else {
         setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
         guard(e);
@@ -334,7 +343,12 @@ export default function DashboardPage() {
       let terminal = false;
       for (let i = 0; i < 30; i++) {
         const current = await api<Payout>(`/payouts/${payout.id}`);
-        setProgress(allocationId, `${t("dash.progress.onchain")} ${current.status}`);
+        setProgress(
+          allocationId,
+          current.status === "CONFIRMED"
+            ? t("dash.progress.confirmed")
+            : `${t("dash.progress.onchain")} ${current.status}`,
+        );
         if (["FINALIZED", "FAILED"].includes(current.status)) {
           terminal = true;
           break;

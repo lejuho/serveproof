@@ -112,6 +112,14 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.progress.sign": { ko: "지갑 서명 대기…", en: "waiting for wallet signature…" },
   "dash.progress.submit": { ko: "제출 중…", en: "submitting…" },
   "dash.progress.onchain": { ko: "온체인", en: "on-chain" },
+  "dash.progress.confirmed": {
+    ko: "RPC 관측 CONFIRMED · 최종 확정 대기",
+    en: "RPC observed CONFIRMED · awaiting finalization",
+  },
+  "dash.progress.expired": {
+    ko: "서명 유효 시간이 만료되었습니다 — USDC 지급을 다시 눌러 새 트랜잭션에 서명하세요",
+    en: "The signature expired — click Pay USDC again to sign a fresh transaction",
+  },
   "dash.progress.legacyDone": {
     ko: "legacy 증빙 등록됨 (PAYROLL)",
     en: "legacy evidence registered (PAYROLL)",
@@ -282,8 +290,8 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
   "dash.progress.failed": { ko: "실패", en: "Failed" },
   "dash.progress.verifying": {
-    ko: "이전 시도를 온체인에서 검증 중 — 이중지급 방지를 위해 자동 정리 후 다시 시도하세요 (정상 운영 시 약 10~11분)",
-    en: "Verifying the previous attempt on-chain — retry after automatic reconciliation (typically 10–11 min while services are healthy)",
+    ko: "이전 시도를 온체인에서 검증 중 — 기존 서명이 최종 확정되거나 blockhash가 만료될 때까지 재서명을 차단합니다",
+    en: "Verifying the previous attempt — re-signing stays blocked until it finalizes or its blockhash expires",
   },
   "dash.payout.refPlaceholder": { ko: "급여 이체 참조번호", en: "Payroll transfer reference" },
   "dash.source.label": { ko: "데이터 소스", en: "Data sources" },

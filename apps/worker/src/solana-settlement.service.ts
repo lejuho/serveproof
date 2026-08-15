@@ -1,4 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import {
+  canReplaceTransactionBlockhash,
+  isBlockhashExpired,
+  shouldRebroadcastSignedTransaction,
+} from "@serveproof/shared";
 import { fetchSettlementRecord, getProgram } from "@serveproof/solana";
 import { Connection } from "@solana/web3.js";
 import { PrismaService } from "./prisma.service";
@@ -65,6 +70,9 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
     const payout = await this.prisma.payout.findUnique({ where: { id: data.payoutId } });
     if (!payout) return;
     if (["FINALIZED", "FAILED"].includes(payout.status)) return;
+    // Ignore delayed jobs from an older attempt after this payout has been
+    // rebuilt with a new blockhash/signature.
+    if (payout.txSignature !== data.signature) return;
 
     const status = (
       await this.connection.getSignatureStatuses([data.signature], {
@@ -72,90 +80,184 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
       })
     ).value[0];
 
-    if (!status) {
-      // Not visible yet — maybe still propagating, maybe blockhash expired.
-      // §29.7 Case B: only fail after the PDA check says nothing landed.
-      const record = await fetchSettlementRecord(this.connection, payout.paymentId);
-      if (record) return this.finalizeFromChain(payout.id, payout.allocationId);
-      throw new Error(`signature ${data.signature.slice(0, 12)}… not found yet`);
-    }
-
-    if (status.err) {
+    if (status?.err) {
       // §29.7 Case C: on-chain error — but the duplicate-payment case means an
       // earlier attempt landed; reconcile before marking failure.
-      const record = await fetchSettlementRecord(this.connection, payout.paymentId);
+      const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
       if (record) return this.finalizeFromChain(payout.id, payout.allocationId);
       await this.markFailed(payout.id, payout.allocationId, JSON.stringify(status.err));
       return;
     }
 
-    if (status.confirmationStatus === "finalized") {
+    if (status?.confirmationStatus === "finalized") {
       await this.finalizeFromChain(payout.id, payout.allocationId, status.slot);
       return;
     }
 
-    // processed/confirmed → show progress, retry until finalized (§29.7 기준)
-    if (payout.status === "SUBMITTED") {
+    // Once confirmed, do not create or broadcast a different transaction.
+    // Keep polling this signature until it finalizes or disappears from a fork.
+    if (status?.confirmationStatus === "confirmed") {
+      if (payout.status === "SUBMITTED") {
+        await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: { status: "CONFIRMED" },
+        });
+      }
+      const blockhashExpired =
+        payout.lastValidBlockHeight !== null &&
+        isBlockhashExpired(
+          await this.connection.getBlockHeight("confirmed"),
+          payout.lastValidBlockHeight,
+        );
+      if (
+        await this.failIfObservedForkWasDropped(
+          payout,
+          data.signature,
+          status.slot,
+          blockhashExpired,
+        )
+      ) {
+        return;
+      }
+      throw new Error("awaiting finalization");
+    }
+
+    if (payout.lastValidBlockHeight !== null) {
+      const currentBlockHeight = await this.connection.getBlockHeight("confirmed");
+      const blockhashExpired = isBlockhashExpired(currentBlockHeight, payout.lastValidBlockHeight);
+      if (!status && canReplaceTransactionBlockhash(null, blockhashExpired)) {
+        // The signature is absent and can no longer land under this blockhash.
+        // A finalized PDA remains the final authority.
+        const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
+        if (record) return this.finalizeFromChain(payout.id, payout.allocationId);
+        await this.markFailed(
+          payout.id,
+          payout.allocationId,
+          "transaction_dropped",
+        );
+        return;
+      }
+      if (blockhashExpired) {
+        if (
+          status &&
+          (await this.failIfObservedForkWasDropped(
+            payout,
+            data.signature,
+            status.slot,
+            blockhashExpired,
+          ))
+        ) {
+          return;
+        }
+        // It landed before expiry and may still become rooted. A new
+        // signature is unsafe until this observation disappears or finalizes.
+        throw new Error("expired blockhash has an observed signature; awaiting fork outcome");
+      }
+    }
+
+    // Not visible/processed but still valid: rebroadcast the exact signed bytes.
+    if (shouldRebroadcastSignedTransaction(status?.confirmationStatus ?? null, false)) {
+      await this.rebroadcastSameTransaction(payout);
+    }
+    if (payout.status === "SUBMITTED" && status?.confirmationStatus === "processed") {
       await this.prisma.payout.update({
         where: { id: payout.id },
-        data: { status: "CONFIRMED" },
+        data: { status: "SUBMITTED" },
       });
     }
-    throw new Error("awaiting finalization");
+    throw new Error(`awaiting confirmation for ${data.signature.slice(0, 12)}…`);
   }
 
-  /** BullMQ `payout-reconcile` processor — sweeps stale in-flight payouts. */
+  /** BullMQ `payout-reconcile` processor — durable fallback after restarts. */
   async reconcileStalePayouts() {
-    const staleBefore = new Date(Date.now() - 2 * 60 * 1000);
     const stale = await this.prisma.payout.findMany({
       where: {
         rail: "USDC",
         status: { in: ["INITIATED", "SUBMITTED", "CONFIRMED"] },
-        initiatedAt: { lt: staleBefore },
       },
-      take: 20,
+      orderBy: { initiatedAt: "asc" },
+      take: 50,
     });
+    if (stale.length === 0) return;
+
+    const currentBlockHeight = await this.connection.getBlockHeight("confirmed");
     const abandonedBefore = new Date(Date.now() - 10 * 60 * 1000);
     for (const payout of stale) {
-      const record = await fetchSettlementRecord(this.connection, payout.paymentId);
+      const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
       if (record) {
         await this.finalizeFromChain(payout.id, payout.allocationId);
         continue;
       }
-      if (!payout.initiatedAt || payout.initiatedAt >= abandonedBefore) continue;
 
-      // No settlement PDA after 10+ minutes. Deciding failure is safe as long
-      // as nothing can still land: the blockhash is long expired, and even if
-      // a ghost tx did land later, buildTransaction rechecks the PDA before a
-      // retry (settle is also idempotent on-chain, so it cannot double-pay).
-      if (!payout.txSignature) {
-        // INITIATED (never submitted) or event-indexer CONFIRMED whose tx was
-        // dropped from a fork before the signature was ever persisted
-        await this.markFailed(payout.id, payout.allocationId, "blockhash_expired");
-        continue;
-      }
-      const status = (
-        await this.connection.getSignatureStatuses([payout.txSignature], {
-          searchTransactionHistory: true,
-        })
-      ).value[0];
-      if (!status) {
-        await this.markFailed(payout.id, payout.allocationId, "transaction_dropped");
-        continue;
-      }
-      if (status.err) {
+      const status = payout.txSignature
+        ? (
+            await this.connection.getSignatureStatuses([payout.txSignature], {
+              searchTransactionHistory: true,
+            })
+          ).value[0]
+        : null;
+      const blockhashExpired =
+        payout.lastValidBlockHeight !== null &&
+        isBlockhashExpired(currentBlockHeight, payout.lastValidBlockHeight);
+
+      if (status?.err) {
+        await this.markFailed(payout.id, payout.allocationId, JSON.stringify(status.err));
+      } else if (status?.confirmationStatus === "finalized") {
+        await this.markFailed(payout.id, payout.allocationId, "finalized_without_settlement");
+      } else if (status?.confirmationStatus === "confirmed") {
+        if (payout.status === "SUBMITTED") {
+          await this.prisma.payout.update({
+            where: { id: payout.id },
+            data: { status: "CONFIRMED" },
+          });
+        }
+        if (
+          payout.txSignature &&
+          (await this.failIfObservedForkWasDropped(
+            payout,
+            payout.txSignature,
+            status.slot,
+            blockhashExpired,
+          ))
+        ) {
+          continue;
+        }
+      } else if (status?.confirmationStatus === "processed") {
+        if (
+          payout.txSignature &&
+          (await this.failIfObservedForkWasDropped(
+            payout,
+            payout.txSignature,
+            status.slot,
+            blockhashExpired,
+          ))
+        ) {
+          continue;
+        } else if (shouldRebroadcastSignedTransaction("processed", blockhashExpired)) {
+          await this.rebroadcastSameTransaction(payout);
+        }
+      } else if (
+        !status &&
+        payout.lastValidBlockHeight !== null &&
+        canReplaceTransactionBlockhash(null, blockhashExpired)
+      ) {
         await this.markFailed(
           payout.id,
           payout.allocationId,
-          `transaction_failed:${JSON.stringify(status.err)}`,
+          payout.txSignature ? "transaction_dropped" : "blockhash_expired_before_submit",
         );
-        continue;
-      }
-      if (status.confirmationStatus === "finalized") {
-        // A finalized successful signature is immutable. If the expected PDA
-        // is still absent after the grace period, this signature did not
-        // produce the settlement and retrying the logical payment is safe.
-        await this.markFailed(payout.id, payout.allocationId, "finalized_without_settlement");
+      } else if (
+        payout.lastValidBlockHeight !== null &&
+        shouldRebroadcastSignedTransaction(null, blockhashExpired)
+      ) {
+        await this.rebroadcastSameTransaction(payout);
+      } else if (
+        payout.lastValidBlockHeight === null &&
+        payout.initiatedAt &&
+        payout.initiatedAt < abandonedBefore
+      ) {
+        // Compatibility for attempts created before blockhash metadata existed.
+        await this.markFailed(payout.id, payout.allocationId, "legacy_attempt_timeout");
       }
     }
     if (stale.length > 0) {
@@ -163,11 +265,69 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async rebroadcastSameTransaction(payout: {
+    id: string;
+    txSignature: string | null;
+    signedTransactionBase64: string | null;
+  }) {
+    if (!payout.txSignature || !payout.signedTransactionBase64) return;
+
+    await this.prisma.payout.updateMany({
+      where: { id: payout.id, status: { in: ["SUBMITTED", "CONFIRMED"] } },
+      data: { broadcastAttempts: { increment: 1 }, lastBroadcastAt: new Date() },
+    });
+    const raw = Buffer.from(payout.signedTransactionBase64, "base64");
+    try {
+      const returnedSignature = await Promise.race([
+        this.connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("rpc_rebroadcast_timeout")), 10_000),
+        ),
+      ]);
+      if (returnedSignature !== payout.txSignature) {
+        this.logger.error(`rebroadcast signature mismatch for payout ${payout.id}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`rebroadcast ${payout.id} failed: ${message}`);
+    }
+  }
+
+  /**
+   * A provider can keep returning a stale processed/confirmed observation from
+   * a discarded fork. Once the finalized root has passed that slot, absence
+   * from finalized transaction history proves that observation cannot land.
+   */
+  private async failIfObservedForkWasDropped(
+    payout: { id: string; allocationId: string; paymentId: string },
+    signature: string,
+    observedSlot: number,
+    blockhashExpired: boolean,
+  ): Promise<boolean> {
+    if (!blockhashExpired) return false;
+    const finalizedRoot = await this.connection.getSlot("finalized");
+    if (finalizedRoot <= observedSlot) return false;
+
+    const finalizedTransaction = await this.connection.getTransaction(signature, {
+      commitment: "finalized",
+      maxSupportedTransactionVersion: 0,
+    });
+    if (finalizedTransaction) return false;
+
+    const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
+    if (record) {
+      await this.finalizeFromChain(payout.id, payout.allocationId);
+    } else {
+      await this.markFailed(payout.id, payout.allocationId, "fork_dropped_after_blockhash_expiry");
+    }
+    return true;
+  }
+
   private async finalizeFromChain(payoutId: string, allocationId: string, slot?: number) {
     const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
     if (!payout || payout.status === "FINALIZED") return;
 
-    const record = await fetchSettlementRecord(this.connection, payout.paymentId);
+    const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
     if (!record) throw new Error("finalize requested but SettlementRecord not found");
     if (BigInt(payout.amountBaseUnits.toString()) !== record.amount) {
       this.logger.error(`amount mismatch for payout ${payoutId}: db≠chain`);
