@@ -81,6 +81,9 @@ export default function DashboardPage() {
   const [businessDate, setBusinessDate] = useState("2026-08-05");
   const [batch, setBatch] = useState<Batch | null>(null);
   const [payoutProgress, setPayoutProgress] = useState<Record<string, string>>({});
+  // Legacy 증빙 인라인 입력 — 열려 있는 행 id와 참조번호 입력값
+  const [legacyOpenFor, setLegacyOpenFor] = useState<string | null>(null);
+  const [legacyRef, setLegacyRef] = useState("");
   const [rebuildResult, setRebuildResult] = useState<{
     entriesUpserted: number;
     alerts: number;
@@ -260,16 +263,15 @@ export default function DashboardPage() {
     }
   };
 
-  const payLegacy = (allocationId: string) =>
+  const payLegacy = (allocationId: string, reference: string) =>
     run(async () => {
-      const reference = window.prompt(t("dash.payout.prompt"));
-      if (!reference) return;
       try {
         await api("/payouts/legacy-evidence", {
           method: "POST",
           body: { allocationId, rail: "PAYROLL", externalReference: reference },
         });
         setProgress(allocationId, t("dash.progress.legacyDone"));
+        setLegacyOpenFor(null);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
@@ -630,14 +632,49 @@ export default function DashboardPage() {
                             {t("dash.payout.noWallet")}
                           </span>
                         )}
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => payLegacy(a.id)}
-                          disabled={busy}
-                        >
-                          {t("dash.payout.legacy")}
-                        </Button>
+                        {legacyOpenFor === a.id ? (
+                          <span className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              className={`${inputClass} w-44 px-2.5 py-1.5 text-sm`}
+                              value={legacyRef}
+                              onChange={(e) => setLegacyRef(e.target.value)}
+                              placeholder={t("dash.payout.refPlaceholder")}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && legacyRef.trim())
+                                  payLegacy(a.id, legacyRef.trim());
+                                if (e.key === "Escape") setLegacyOpenFor(null);
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => payLegacy(a.id, legacyRef.trim())}
+                              disabled={busy || !legacyRef.trim()}
+                            >
+                              {t("dash.payout.refConfirm")}
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => setLegacyOpenFor(null)}
+                              className="text-xs text-zinc-400 hover:text-zinc-600"
+                            >
+                              {t("dash.payout.refCancel")}
+                            </button>
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setLegacyRef("");
+                              setLegacyOpenFor(a.id);
+                            }}
+                            disabled={busy}
+                          >
+                            {t("dash.payout.legacy")}
+                          </Button>
+                        )}
                       </span>
                     )}
                   </td>

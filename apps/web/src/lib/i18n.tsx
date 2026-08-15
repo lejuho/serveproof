@@ -107,10 +107,6 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.wallet.expectedSigner": { ko: "필요한 서명자", en: "Required signer" },
   "dash.payout.usdc": { ko: "USDC 지급 (지갑 서명)", en: "Pay USDC (wallet sign)" },
   "dash.payout.legacy": { ko: "Legacy 증빙", en: "Legacy evidence" },
-  "dash.payout.prompt": {
-    ko: "지급 증빙 reference (예: payroll run ID)",
-    en: "Payout evidence reference (e.g. payroll run ID)",
-  },
   "dash.progress.create": { ko: "payout 생성 중…", en: "creating payout…" },
   "dash.progress.build": { ko: "트랜잭션 생성 중…", en: "building transaction…" },
   "dash.progress.sign": { ko: "지갑 서명 대기…", en: "waiting for wallet signature…" },
@@ -285,6 +281,9 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.cta.review": { ko: "검토·승인하기", en: "Review & approve" },
   "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
   "dash.progress.failed": { ko: "실패", en: "Failed" },
+  "dash.payout.refPlaceholder": { ko: "급여 이체 참조번호", en: "Payroll transfer reference" },
+  "dash.payout.refConfirm": { ko: "기록", en: "Record" },
+  "dash.payout.refCancel": { ko: "취소", en: "Cancel" },
   "dash.payout.noWallet": {
     ko: "워커 지갑 미등록 — 워커가 내 소득 화면에서 지갑을 연결해야 합니다",
     en: "No worker wallet — the worker must connect one on their income page",
