@@ -284,6 +284,11 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.cta.calc": { ko: "계산하러 가기", en: "Go calculate" },
   "dash.todo.cta.review": { ko: "검토·승인하기", en: "Review & approve" },
   "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
+  "dash.progress.failed": { ko: "실패", en: "Failed" },
+  "dash.payout.noWallet": {
+    ko: "워커 지갑 미등록 — 워커가 내 소득 화면에서 지갑을 연결해야 합니다",
+    en: "No worker wallet — the worker must connect one on their income page",
+  },
   "verify.yes": { ko: "있음", en: "Yes" },
   "verify.no": { ko: "없음", en: "No" },
   "verify.footer": {

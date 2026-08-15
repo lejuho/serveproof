@@ -49,7 +49,7 @@ interface Allocation {
   netAllocatedUsdCents: number;
   payoutStatus: "UNPAID" | "PENDING" | "PAID" | "FAILED";
   payoutRail: string | null;
-  worker: { user: { displayName: string } };
+  worker: { defaultWalletId: string | null; user: { displayName: string } };
 }
 interface Batch {
   id: string;
@@ -220,6 +220,18 @@ export default function DashboardPage() {
   /** Spec §29.4 flow: create → unsigned tx → wallet signs → submit → poll. */
   const payUsdc = (allocationId: string) =>
     run(async () => {
+      try {
+        await payUsdcInner(allocationId);
+      } catch (e) {
+        // 실패를 그 행에 그대로 표시 — "생성 중…"으로 고착되지 않게
+        const message = e instanceof Error ? e.message : String(e);
+        setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
+        throw e;
+      }
+    });
+
+  const payUsdcInner = async (allocationId: string) => {
+    {
       setProgress(allocationId, t("dash.progress.create"));
       const payout = await api<Payout>("/payouts", { method: "POST", body: { allocationId } });
 
@@ -245,18 +257,26 @@ export default function DashboardPage() {
       }
       await refreshBatch();
       refreshUnmapped();
-    });
+    }
+  };
 
   const payLegacy = (allocationId: string) =>
     run(async () => {
       const reference = window.prompt(t("dash.payout.prompt"));
       if (!reference) return;
-      await api("/payouts/legacy-evidence", {
-        method: "POST",
-        body: { allocationId, rail: "PAYROLL", externalReference: reference },
-      });
-      setProgress(allocationId, t("dash.progress.legacyDone"));
+      try {
+        await api("/payouts/legacy-evidence", {
+          method: "POST",
+          body: { allocationId, rail: "PAYROLL", externalReference: reference },
+        });
+        setProgress(allocationId, t("dash.progress.legacyDone"));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
+        throw e;
+      }
       await refreshBatch();
+      refreshUnmapped();
     });
 
   const rebuildIncome = () =>
@@ -598,10 +618,18 @@ export default function DashboardPage() {
                           size="sm"
                           variant="violet"
                           onClick={() => payUsdc(a.id)}
-                          disabled={busy}
+                          disabled={busy || !a.worker.defaultWalletId}
+                          title={
+                            a.worker.defaultWalletId ? undefined : t("dash.payout.noWallet")
+                          }
                         >
                           {t("dash.payout.usdc")}
                         </Button>
+                        {!a.worker.defaultWalletId && (
+                          <span className="self-center text-xs text-zinc-400">
+                            {t("dash.payout.noWallet")}
+                          </span>
+                        )}
                         <Button
                           size="sm"
                           variant="secondary"
