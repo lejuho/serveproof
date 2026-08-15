@@ -19,6 +19,11 @@ export class WorkersController {
     return this.workers.getMe(user.id);
   }
 
+  @Get("venue-connections")
+  venueConnections(@CurrentUser() user: AuthenticatedUser) {
+    return this.workers.venueConnections(user.id);
+  }
+
   @Post("wallets")
   addWallet(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     return this.workers.addWallet(user.id, parseBody(addWalletSchema, body));

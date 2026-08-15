@@ -27,7 +27,10 @@ export class AllocationsService {
    * Loads evidence for the business date, runs the pure engine, and stores the
    * batch as CALCULATED or REVIEW_REQUIRED (blocking issues, spec §11.1).
    */
-  async calculate(input: { venueId: string; businessDate: string; policyVersion?: number }) {
+  async calculate(
+    input: { venueId: string; businessDate: string; policyVersion?: number },
+    calculatedBy?: string,
+  ) {
     const venue = await this.prisma.venue.findUnique({ where: { id: input.venueId } });
     if (!venue) throw new NotFoundException(`Venue ${input.venueId} not found`);
 
@@ -126,6 +129,7 @@ export class AllocationsService {
           allocationHash,
           reviewIssues: JSON.parse(JSON.stringify(result.issues)),
           calculatedAt: new Date(),
+          calculatedBy: calculatedBy ?? null,
           approvedAt: null,
           approvedBy: null,
         },
@@ -140,6 +144,7 @@ export class AllocationsService {
           allocationHash,
           reviewIssues: JSON.parse(JSON.stringify(result.issues)),
           calculatedAt: new Date(),
+          calculatedBy: calculatedBy ?? null,
         },
       });
       if (result.allocations.length > 0) {

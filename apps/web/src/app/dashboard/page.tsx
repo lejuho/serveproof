@@ -15,6 +15,7 @@ import {
   tableCellClass,
   tableHeadClass,
 } from "@/components/ui";
+import { WorkerConnections, type WorkerConnectionsResponse } from "@/components/worker-connections";
 
 interface Venue {
   id: string;
@@ -124,6 +125,9 @@ export default function DashboardPage() {
   } | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [venueSigner, setVenueSigner] = useState<string | null>(null);
+  const [workerConnections, setWorkerConnections] = useState<WorkerConnectionsResponse | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // React state does not update synchronously, so `busy` alone cannot stop two
@@ -160,6 +164,9 @@ export default function DashboardPage() {
     if (!venueId) return;
     api<UnmappedResponse>(`/venues/${venueId}/unmapped-workers`).then(setUnmapped).catch(guard);
     api<typeof actionItems>(`/venues/${venueId}/action-items`).then(setActionItems).catch(guard);
+    api<WorkerConnectionsResponse>(`/venues/${venueId}/worker-connections`)
+      .then(setWorkerConnections)
+      .catch(guard);
   }, [venueId, guard]);
 
   useEffect(() => {
@@ -386,6 +393,7 @@ export default function DashboardPage() {
         { method: "POST", body: {} },
       );
       setRebuildResult(result);
+      refreshUnmapped();
     });
 
   const payable = batch && ["PAYABLE", "PARTIALLY_PAID", "PAID"].includes(batch.status);
@@ -522,6 +530,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {workerConnections && <WorkerConnections data={workerConnections} locale={locale} />}
+
       <Card step={1} title="CSV Import" description={t("dash.csv.desc")}>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -573,7 +583,8 @@ export default function DashboardPage() {
                   {!!importResult.businessDates?.length && (
                     <span className="text-emerald-700">
                       {" "}
-                      — detected {importResult.businessDates.join(", ")}; calc date auto-selected</span>
+                      — detected {importResult.businessDates.join(", ")}; calc date auto-selected
+                    </span>
                   )}
                 </>
               )}
@@ -744,9 +755,7 @@ export default function DashboardPage() {
                           variant="violet"
                           onClick={() => payUsdc(a.id)}
                           disabled={busy || !a.worker.defaultWalletId}
-                          title={
-                            a.worker.defaultWalletId ? undefined : t("dash.payout.noWallet")
-                          }
+                          title={a.worker.defaultWalletId ? undefined : t("dash.payout.noWallet")}
                         >
                           {t("dash.payout.usdc")}
                         </Button>

@@ -38,7 +38,11 @@ export class IncomeService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Rebuild all base IncomeEntry rows and discrepancy alerts for a venue. */
-  async rebuildVenue(venueId: string) {
+  async rebuildVenue(
+    venueId: string,
+    actorUserId?: string,
+    source: "MANUAL" | "PAYROLL_IMPORT" | "SYSTEM" = "SYSTEM",
+  ) {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) throw new NotFoundException(`Venue ${venueId} not found`);
 
@@ -91,7 +95,9 @@ export class IncomeService {
     for (const record of payrollRecords) {
       const periodShifts = mappedShifts.filter((s) => {
         const d = new Date(`${s.businessDate}T12:00:00Z`);
-        return s.mappedWorkerId === record.workerId && record.periodStart <= d && record.periodEnd >= d;
+        return (
+          s.mappedWorkerId === record.workerId && record.periodStart <= d && record.periodEnd >= d
+        );
       });
       if (!periodShifts.length) continue;
       // weight by attributed allocation so reported tips line up with the
@@ -254,6 +260,16 @@ export class IncomeService {
           type: a.type,
           detail: JSON.parse(JSON.stringify(a.detail)),
         })),
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          venueId,
+          actorUserId: actorUserId ?? null,
+          action: "INCOME_ENTRIES_REBUILT",
+          entityType: "Venue",
+          entityId: venueId,
+          detail: { source, entriesUpserted, alerts: alerts.length },
+        },
       }),
     ]);
 

@@ -24,7 +24,7 @@ export class AllocationsController {
   async calculate(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const input = parseBody(calculateSchema, body);
     await this.access.assertVenueRole(user.id, input.venueId, VENUE_MANAGE_ROLES);
-    return this.allocations.calculate(input);
+    return this.allocations.calculate(input, user.id);
   }
 
   @Get(":id")

@@ -17,6 +17,7 @@ import {
   tableCellClass,
   tableHeadClass,
 } from "@/components/ui";
+import { VenueConnectionCards, type VenueConnection } from "@/components/venue-connection-cards";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -47,7 +48,13 @@ interface TimelineEntry {
   correctionReason: string | null;
 }
 
-function SourceBadge({ ingestSource, t }: { ingestSource: string | null; t: (k: string) => string }) {
+function SourceBadge({
+  ingestSource,
+  t,
+}: {
+  ingestSource: string | null;
+  t: (k: string) => string;
+}) {
   const pos = ingestSource === "PROVIDER_API";
   return (
     <span
@@ -87,14 +94,22 @@ function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function maskEmail(email: string): string {
+  const [local = "", domain = ""] = email.split("@");
+  if (!domain) return "***";
+  const visible = local.slice(0, Math.min(2, local.length));
+  return visible + "*".repeat(Math.max(3, local.length - visible.length)) + "@" + domain;
+}
+
 export default function MyIncomePage() {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [venueConnections, setVenueConnections] = useState<VenueConnection[]>([]);
   const [level, setLevel] = useState("LEVEL_2");
   const [purpose, setPurpose] = useState("임대 계약 소득증명");
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -128,13 +143,15 @@ export default function MyIncomePage() {
       api<Summary>("/workers/me/income-summary"),
       api<Alert[]>("/workers/me/discrepancies"),
       api<Grant[]>("/disclosures"),
+      api<VenueConnection[]>("/workers/me/venue-connections"),
     ])
-      .then(([meData, timelineData, summaryData, alertData, grantData]) => {
+      .then(([meData, timelineData, summaryData, alertData, grantData, connectionData]) => {
         setMe(meData);
         setTimeline(timelineData);
         setSummary(summaryData);
         setAlerts(alertData);
         setGrants(grantData);
+        setVenueConnections(connectionData);
       })
       .catch(guard);
   }, [router, guard]);
@@ -195,6 +212,7 @@ export default function MyIncomePage() {
       const address = await connectWallet();
       await api("/workers/me/wallets", { method: "POST", body: { address } });
       setMe(await api<Me>("/workers/me"));
+      setVenueConnections(await api<VenueConnection[]>("/workers/me/venue-connections"));
     } catch (e) {
       guard(e);
     } finally {
@@ -237,7 +255,7 @@ export default function MyIncomePage() {
     <AppShell
       wide
       title={t("me.title")}
-      subtitle={me ? `${me.user.displayName} · ${me.user.email}` : undefined}
+      subtitle={me ? `${me.user.displayName} · ${maskEmail(me.user.email)}` : undefined}
       right={
         <button
           onClick={() => {
@@ -283,6 +301,8 @@ export default function MyIncomePage() {
           />
         </div>
       )}
+
+      <VenueConnectionCards connections={venueConnections} locale={locale} />
 
       <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
         {alerts.length === 0 ? (

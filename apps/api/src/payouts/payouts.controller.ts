@@ -35,14 +35,14 @@ export class PayoutsController {
     const { allocationId } = parseBody(createSchema, body);
     const venueId = await this.venueIdOfAllocation(allocationId);
     if (venueId) await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
-    return this.payouts.createUsdcPayout(allocationId);
+    return this.payouts.createUsdcPayout(allocationId, user.id);
   }
 
   @Get(":id/transaction")
   async buildTransaction(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     const payout = await this.payouts.getPayout(id);
     await this.access.assertVenueRole(user.id, payout.venueId, VENUE_MANAGE_ROLES);
-    return this.payouts.buildTransaction(id);
+    return this.payouts.buildTransaction(id, user.id);
   }
 
   @Post(":id/submit")
@@ -54,7 +54,7 @@ export class PayoutsController {
     const { signedTransactionBase64 } = parseBody(submitSchema, body);
     const payout = await this.payouts.getPayout(id);
     await this.access.assertVenueRole(user.id, payout.venueId, VENUE_MANAGE_ROLES);
-    return this.payouts.submitSigned(id, signedTransactionBase64);
+    return this.payouts.submitSigned(id, signedTransactionBase64, user.id);
   }
 
   @Get(":id")
@@ -69,6 +69,6 @@ export class PayoutsController {
     const input = parseBody(legacySchema, body);
     const venueId = await this.venueIdOfAllocation(input.allocationId);
     if (venueId) await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
-    return this.payouts.registerLegacyEvidence(input.allocationId, input);
+    return this.payouts.registerLegacyEvidence(input.allocationId, input, user.id);
   }
 }

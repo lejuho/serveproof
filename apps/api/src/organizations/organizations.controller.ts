@@ -75,6 +75,12 @@ export class OrganizationsController {
     return this.organizations.actionItems(venueId);
   }
 
+  @Get("venues/:id/worker-connections")
+  async workerConnections(@CurrentUser() user: AuthenticatedUser, @Param("id") venueId: string) {
+    await this.access.assertVenueRole(user.id, venueId, VENUE_READ_ROLES);
+    return this.organizations.workerConnections(venueId);
+  }
+
   @Post("venues/:id/wallet")
   async setWallet(
     @CurrentUser() user: AuthenticatedUser,

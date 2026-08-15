@@ -26,7 +26,7 @@ export class IncomeController {
   @Post("venues/:venueId/income/rebuild")
   async rebuild(@CurrentUser() user: AuthenticatedUser, @Param("venueId") venueId: string) {
     await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
-    return this.income.rebuildVenue(venueId);
+    return this.income.rebuildVenue(venueId, user.id, "MANUAL");
   }
 
   // Spec §22 — worker self-service income endpoints

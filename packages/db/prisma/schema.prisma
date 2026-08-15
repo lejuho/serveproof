@@ -97,15 +97,15 @@ model Venue {
 
   createdAt DateTime @default(now())
 
-  organization       Organization            @relation(fields: [organizationId], references: [id])
-  externalWorkers    ExternalWorkerAccount[]
-  tipEvidences       TipEvidence[]
-  shiftEvidences     ShiftEvidence[]
-  allocationPolicies AllocationPolicy[]
-  allocationBatches  AllocationBatch[]
-  payouts            Payout[]
-  payrollRecords     PayrollRecord[]
-  incomeEntries      IncomeEntry[]
+  organization        Organization            @relation(fields: [organizationId], references: [id])
+  externalWorkers     ExternalWorkerAccount[]
+  tipEvidences        TipEvidence[]
+  shiftEvidences      ShiftEvidence[]
+  allocationPolicies  AllocationPolicy[]
+  allocationBatches   AllocationBatch[]
+  payouts             Payout[]
+  payrollRecords      PayrollRecord[]
+  incomeEntries       IncomeEntry[]
   providerConnections ProviderConnection[]
 
   @@index([organizationId])
@@ -261,20 +261,20 @@ enum EvidenceIngestSource {
 }
 
 model TipEvidence {
-  id                String        @id @default(uuid())
-  provider          String
-  ingestSource      EvidenceIngestSource @default(CSV_UPLOAD)
-  venueId           String
-  externalPaymentId String
-  externalOrderId   String?
-  tipType           TipType
+  id                  String               @id @default(uuid())
+  provider            String
+  ingestSource        EvidenceIngestSource @default(CSV_UPLOAD)
+  venueId             String
+  externalPaymentId   String
+  externalOrderId     String?
+  tipType             TipType
   grossAmountUsdCents Int
-  paymentStatus     PaymentStatus @default(COMPLETED)
-  refundStatus      RefundStatus  @default(NONE)
-  businessDate      String // YYYY-MM-DD in venue timezone
-  sourcePayloadUri  String?
-  sourceHash        String
-  observedAt        DateTime      @default(now())
+  paymentStatus       PaymentStatus        @default(COMPLETED)
+  refundStatus        RefundStatus         @default(NONE)
+  businessDate        String // YYYY-MM-DD in venue timezone
+  sourcePayloadUri    String?
+  sourceHash          String
+  observedAt          DateTime             @default(now())
 
   venue Venue @relation(fields: [venueId], references: [id])
 
@@ -290,7 +290,7 @@ enum ShiftStatus {
 }
 
 model ShiftEvidence {
-  id               String      @id @default(uuid())
+  id               String               @id @default(uuid())
   provider         String
   ingestSource     EvidenceIngestSource @default(CSV_UPLOAD)
   venueId          String
@@ -300,11 +300,11 @@ model ShiftEvidence {
   role             String
   clockIn          DateTime
   clockOut         DateTime?
-  workedMinutes    Int         @default(0)
-  shiftStatus      ShiftStatus @default(COMPLETED)
+  workedMinutes    Int                  @default(0)
+  shiftStatus      ShiftStatus          @default(COMPLETED)
   businessDate     String // YYYY-MM-DD in venue timezone
   sourceHash       String
-  observedAt       DateTime    @default(now())
+  observedAt       DateTime             @default(now())
 
   venue         Venue         @relation(fields: [venueId], references: [id])
   incomeEntries IncomeEntry[]
@@ -365,20 +365,21 @@ enum AllocationBatchStatus {
 }
 
 model AllocationBatch {
-  id                  String                @id @default(uuid())
-  venueId             String
-  businessDate        String // YYYY-MM-DD in venue timezone
-  tipPoolAmountUsdCents Int                 @default(0)
-  policyId            String
-  policyVersion       Int
-  status              AllocationBatchStatus @default(DRAFT)
-  evidenceHash        String?
-  allocationHash      String?
-  reviewIssues        Json                  @default("[]")
-  calculatedAt        DateTime?
-  approvedAt          DateTime?
-  approvedBy          String?
-  createdAt           DateTime              @default(now())
+  id                    String                @id @default(uuid())
+  venueId               String
+  businessDate          String // YYYY-MM-DD in venue timezone
+  tipPoolAmountUsdCents Int                   @default(0)
+  policyId              String
+  policyVersion         Int
+  status                AllocationBatchStatus @default(DRAFT)
+  evidenceHash          String?
+  allocationHash        String?
+  reviewIssues          Json                  @default("[]")
+  calculatedAt          DateTime?
+  calculatedBy          String?
+  approvedAt            DateTime?
+  approvedBy            String?
+  createdAt             DateTime              @default(now())
 
   venue       Venue              @relation(fields: [venueId], references: [id])
   policy      AllocationPolicy   @relation(fields: [policyId], references: [id])
@@ -405,16 +406,16 @@ enum WorkerAllocationPayoutStatus {
 }
 
 model WorkerAllocation {
-  id                  String                       @id @default(uuid())
-  batchId             String
-  workerId            String
-  grossTipUsdCents    Int                          @default(0)
-  pooledTipUsdCents   Int                          @default(0)
-  tipOutGivenUsdCents Int                          @default(0)
-  tipOutReceivedUsdCents Int                       @default(0)
-  netAllocatedUsdCents Int                         @default(0)
-  payoutRail          WorkerPayoutRail?
-  payoutStatus        WorkerAllocationPayoutStatus @default(UNPAID)
+  id                     String                       @id @default(uuid())
+  batchId                String
+  workerId               String
+  grossTipUsdCents       Int                          @default(0)
+  pooledTipUsdCents      Int                          @default(0)
+  tipOutGivenUsdCents    Int                          @default(0)
+  tipOutReceivedUsdCents Int                          @default(0)
+  netAllocatedUsdCents   Int                          @default(0)
+  payoutRail             WorkerPayoutRail?
+  payoutStatus           WorkerAllocationPayoutStatus @default(UNPAID)
 
   batch   AllocationBatch @relation(fields: [batchId], references: [id])
   worker  Worker          @relation(fields: [workerId], references: [id])
@@ -438,42 +439,45 @@ enum PayoutStatus {
 }
 
 model Payout {
-  id           String  @id @default(uuid())
+  id              String           @id @default(uuid())
   // Idempotency key — one logical payment; also hashed into the on-chain
   // SettlementRecord PDA seed (spec §13.6, §16.1).
-  paymentId    String  @unique
+  paymentId       String           @unique
   // hex(sha256(paymentId)) — matches on-chain PDA seed and PayoutSettled events
-  paymentIdHash String? @unique
-  allocationId String
-  workerId     String
-  venueId      String
-  walletId     String?
-  rail         WorkerPayoutRail
-  asset        String // "USDC" | "USD" | ...
+  paymentIdHash   String?          @unique
+  allocationId    String
+  workerId        String
+  venueId         String
+  walletId        String?
+  rail            WorkerPayoutRail
+  asset           String // "USDC" | "USD" | ...
   // Native asset amount in base units (USDC: 6 decimals)
-  amountBaseUnits BigInt @default(0)
+  amountBaseUnits BigInt           @default(0)
   amountUsdCents  Int
-  status       PayoutStatus @default(CREATED)
+  status          PayoutStatus     @default(CREATED)
 
-  externalReference String?
-  txSignature       String?
-  settlementPda     String?
-  recentBlockhash   String?
-  lastValidBlockHeight BigInt?
+  externalReference       String?
+  txSignature             String?
+  settlementPda           String?
+  recentBlockhash         String?
+  lastValidBlockHeight    BigInt?
   signedTransactionBase64 String?
-  lastBroadcastAt   DateTime?
-  broadcastAttempts Int @default(0)
-  slot              BigInt?
-  blockTime         DateTime?
-  initiatedAt       DateTime?
-  settledAt         DateTime?
-  failedReason      String?
-  createdAt         DateTime  @default(now())
+  lastBroadcastAt         DateTime?
+  broadcastAttempts       Int       @default(0)
+  slot                    BigInt?
+  blockTime               DateTime?
+  initiatedAt             DateTime?
+  initiatedByUserId       String?
+  submittedByUserId       String?
+  signerWallet            String?
+  settledAt               DateTime?
+  failedReason            String?
+  createdAt               DateTime  @default(now())
 
-  allocation WorkerAllocation @relation(fields: [allocationId], references: [id])
-  worker     Worker           @relation(fields: [workerId], references: [id])
-  venue      Venue            @relation(fields: [venueId], references: [id])
-  wallet     WorkerWallet?    @relation(fields: [walletId], references: [id])
+  allocation    WorkerAllocation @relation(fields: [allocationId], references: [id])
+  worker        Worker           @relation(fields: [workerId], references: [id])
+  venue         Venue            @relation(fields: [venueId], references: [id])
+  wallet        WorkerWallet?    @relation(fields: [walletId], references: [id])
   incomeEntries IncomeEntry[]
 
   @@index([venueId, status])
@@ -489,19 +493,19 @@ enum PayrollRecordStatus {
 }
 
 model PayrollRecord {
-  id                     String              @id @default(uuid())
-  workerId               String
-  venueId                String
-  periodStart            DateTime
-  periodEnd              DateTime
-  reportedTipUsdCents    Int                 @default(0)
+  id                         String              @id @default(uuid())
+  workerId                   String
+  venueId                    String
+  periodStart                DateTime
+  periodEnd                  DateTime
+  reportedTipUsdCents        Int                 @default(0)
   federalWithholdingUsdCents Int?
   stateWithholdingUsdCents   Int?
   socialSecurityUsdCents     Int?
   medicareUsdCents           Int?
-  status                 PayrollRecordStatus @default(PENDING)
-  providerReference      String?
-  createdAt              DateTime            @default(now())
+  status                     PayrollRecordStatus @default(PENDING)
+  providerReference          String?
+  createdAt                  DateTime            @default(now())
 
   worker Worker @relation(fields: [workerId], references: [id])
   venue  Venue  @relation(fields: [venueId], references: [id])
@@ -533,26 +537,27 @@ enum IncomeEntryEffectiveStatus {
 }
 
 model IncomeEntry {
-  id                    String            @id @default(uuid())
-  workerId              String
-  venueId               String
-  shiftId               String?
-  payoutId              String?
-  earnedUsdCents        Int               @default(0)
-  allocatedUsdCents     Int               @default(0)
-  paidUsdCents          Int               @default(0)
-  payrollReportedUsdCents Int             @default(0)
-  withholdingStatus     WithholdingStatus @default(UNKNOWN)
-  payoutRail            WorkerPayoutRail?
-  evidenceGrade         EvidenceGrade     @default(E)
-  effectiveStatus       IncomeEntryEffectiveStatus @default(ACTIVE)
+  id                      String                     @id @default(uuid())
+  workerId                String
+  venueId                 String
+  shiftId                 String?
+  payoutId                String?
+  earnedUsdCents          Int                        @default(0)
+  allocatedUsdCents       Int                        @default(0)
+  paidUsdCents            Int                        @default(0)
+  payrollReportedUsdCents Int                        @default(0)
+  withholdingStatus       WithholdingStatus          @default(UNKNOWN)
+  payoutRail              WorkerPayoutRail?
+  evidenceGrade           EvidenceGrade              @default(E)
+  effectiveStatus         IncomeEntryEffectiveStatus @default(ACTIVE)
 
   // Correction ledger — originals are never deleted (spec §19)
-  originalEntryId String?
-  correctionOfId  String?
+  originalEntryId  String?
+  correctionOfId   String?
   correctionReason String?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   worker       Worker         @relation(fields: [workerId], references: [id])
   venue        Venue          @relation(fields: [venueId], references: [id])
@@ -615,8 +620,8 @@ model DisclosureGrant {
   accessTokenHash String          @unique
   createdAt       DateTime        @default(now())
 
-  worker  Worker               @relation(fields: [workerId], references: [id])
-  reports VerificationReport[]
+  worker   Worker                @relation(fields: [workerId], references: [id])
+  reports  VerificationReport[]
   accesses DisclosureAccessLog[]
 
   @@index([workerId])
@@ -643,21 +648,21 @@ enum ReportStatus {
 }
 
 model VerificationReport {
-  id                String       @id @default(uuid())
-  workerId          String
-  disclosureGrantId String
-  reportHash        String
-  reportUri         String? // private object storage key — never a public URL
+  id                     String       @id @default(uuid())
+  workerId               String
+  disclosureGrantId      String
+  reportHash             String
+  reportUri              String? // private object storage key — never a public URL
   // Immutable content snapshot at issuance — the verify page renders this,
   // never live data (spec §21.2: report hash match)
-  snapshot          Json         @default("{}")
-  status            ReportStatus @default(DRAFT)
-  issuedAt          DateTime?
-  expiresAt         DateTime?
-  revokedAt         DateTime?
-  previousReportId  String?      @unique
+  snapshot               Json         @default("{}")
+  status                 ReportStatus @default(DRAFT)
+  issuedAt               DateTime?
+  expiresAt              DateTime?
+  revokedAt              DateTime?
+  previousReportId       String?      @unique
   onchainRecordReference String?
-  createdAt         DateTime     @default(now())
+  createdAt              DateTime     @default(now())
 
   worker         Worker              @relation(fields: [workerId], references: [id])
   grant          DisclosureGrant     @relation(fields: [disclosureGrantId], references: [id])

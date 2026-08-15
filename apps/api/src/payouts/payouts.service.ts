@@ -39,7 +39,7 @@ export class PayoutsService implements OnModuleDestroy {
    * Spec §16.1 — create the Payout row. paymentId = allocation id, so the DB
    * unique constraint makes one logical payment per allocation (idempotent).
    */
-  async createUsdcPayout(allocationId: string) {
+  async createUsdcPayout(allocationId: string, initiatedByUserId?: string) {
     const allocation = await this.prisma.workerAllocation.findUnique({
       where: { id: allocationId },
       include: {
@@ -125,6 +125,9 @@ export class PayoutsService implements OnModuleDestroy {
       lastBroadcastAt: null,
       broadcastAttempts: 0,
       initiatedAt: null,
+      initiatedByUserId: initiatedByUserId ?? null,
+      submittedByUserId: null,
+      signerWallet: null,
       settledAt: null,
       failedReason: null,
     };
@@ -144,7 +147,7 @@ export class PayoutsService implements OnModuleDestroy {
    * Spec §29.4 — build the UNSIGNED settle_payout transaction for the venue
    * wallet to sign. Also records blockhash metadata for expiry handling.
    */
-  async buildTransaction(payoutId: string) {
+  async buildTransaction(payoutId: string, initiatedByUserId?: string) {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
       include: { wallet: true, allocation: { include: { batch: true } } },
@@ -201,6 +204,9 @@ export class PayoutsService implements OnModuleDestroy {
         lastBroadcastAt: null,
         broadcastAttempts: 0,
         initiatedAt: new Date(),
+        initiatedByUserId: initiatedByUserId ?? payout.initiatedByUserId,
+        submittedByUserId: null,
+        signerWallet: venue.payoutSignerWallet,
         failedReason: null,
       },
     });
@@ -228,7 +234,11 @@ export class PayoutsService implements OnModuleDestroy {
    * if the RPC hangs or the HTTP response is lost, confirmation/reconcile jobs
    * can track the transaction (§29.7 — broadcast state must never be untracked).
    */
-  async submitSigned(payoutId: string, signedTransactionBase64: string) {
+  async submitSigned(
+    payoutId: string,
+    signedTransactionBase64: string,
+    submittedByUserId?: string,
+  ) {
     const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
     if (!payout) throw new NotFoundException(`Payout ${payoutId} not found`);
     // A browser retry or a second tab may submit after the first request has
@@ -282,6 +292,7 @@ export class PayoutsService implements OnModuleDestroy {
         signedTransactionBase64: raw.toString("base64"),
         lastBroadcastAt: new Date(),
         broadcastAttempts: 1,
+        submittedByUserId: submittedByUserId ?? payout.submittedByUserId,
       },
     });
     if (claimed.count === 0) {
@@ -348,6 +359,7 @@ export class PayoutsService implements OnModuleDestroy {
       rail: "CASH_RETAINED" | "CASH_DRAWER" | "PAYROLL" | "PAYOUT_PROVIDER" | "BANK_REFERENCE";
       externalReference: string;
     },
+    submittedByUserId?: string,
   ) {
     const allocation = await this.prisma.workerAllocation.findUnique({
       where: { id: allocationId },
@@ -370,6 +382,7 @@ export class PayoutsService implements OnModuleDestroy {
           externalReference: input.externalReference,
           status: "FINALIZED",
           settledAt: new Date(),
+          submittedByUserId: submittedByUserId ?? null,
         },
         create: {
           paymentId,
@@ -383,6 +396,8 @@ export class PayoutsService implements OnModuleDestroy {
           externalReference: input.externalReference,
           status: "FINALIZED",
           settledAt: new Date(),
+          initiatedByUserId: submittedByUserId ?? null,
+          submittedByUserId: submittedByUserId ?? null,
         },
       }),
       this.prisma.workerAllocation.update({

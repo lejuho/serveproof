@@ -70,7 +70,7 @@ export class PayrollService {
     }
 
     // payroll changes shift the whole observability picture — rebuild now
-    await this.income.rebuildVenue(venueId);
+    await this.income.rebuildVenue(venueId, undefined, "PAYROLL_IMPORT");
     return { imported, skipped };
   }
 
