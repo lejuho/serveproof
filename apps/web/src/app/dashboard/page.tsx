@@ -84,6 +84,7 @@ export default function DashboardPage() {
   // Legacy 증빙 인라인 입력 — 열려 있는 행 id와 참조번호 입력값
   const [legacyOpenFor, setLegacyOpenFor] = useState<string | null>(null);
   const [legacyRef, setLegacyRef] = useState("");
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [rebuildResult, setRebuildResult] = useState<{
     entriesUpserted: number;
     alerts: number;
@@ -169,6 +170,35 @@ export default function DashboardPage() {
     const refreshed = await api<Batch>(`/allocation-batches/${batch.id}`);
     setBatch(refreshed);
   }, [batch]);
+
+  /** 데모용 Toast POS 데이터 — 오늘 영업일 기준으로 임의 금액 CSV를 생성해 채운다. */
+  const fillToastDemoCsv = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const rnd = (min: number, max: number) => (Math.random() * (max - min) + min).toFixed(2);
+    setCsvText(
+      [
+        "provider,venue_external_id,worker_external_id,shift_external_id,tip_type,gross_tip,clock_in,clock_out,role,payout_route,payroll_status",
+        `toast_mock,venue_demo,smoke.a,${today}_s1,CARD_TIP,${rnd(90, 180)},${today}T17:00:00Z,${today}T22:00:00Z,SERVER,PAYROLL,PROVIDER_CONFIRMED`,
+        `toast_mock,venue_demo,smoke.b,${today}_s2,CARD_TIP,${rnd(60, 150)},${today}T17:30:00Z,${today}T23:00:00Z,SERVER,USDC,PENDING`,
+        `toast_mock,venue_demo,demo.b,${today}_s3,CARD_TIP,${rnd(50, 120)},${today}T18:00:00Z,${today}T23:30:00Z,SERVER,USDC,PENDING`,
+        `toast_mock,venue_demo,demo.b,${today}_s3,CASH_TIP,${rnd(10, 40)},${today}T18:00:00Z,${today}T23:30:00Z,SERVER,USDC,PENDING`,
+      ].join("\n"),
+    );
+    setSyncMessage(null);
+  };
+
+  /** Square Sandbox에서 최근 14일 증거를 실제로 동기화 (worker가 처리). */
+  const syncSquare = () =>
+    run(async () => {
+      const end = new Date().toISOString().slice(0, 10);
+      const start = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+      const res = await api<{ jobId: string; status: string }>("/evidence/sync", {
+        method: "POST",
+        body: { venueId, provider: "square", startDate: start, endDate: end },
+      });
+      setSyncMessage(`${t("dash.source.syncQueued")} (job ${res.jobId})`);
+      setTimeout(refreshUnmapped, 5000);
+    });
 
   const importCsv = () =>
     run(async () => {
@@ -412,6 +442,18 @@ export default function DashboardPage() {
       )}
 
       <Card step={1} title="CSV Import" description={t("dash.csv.desc")}>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            {t("dash.source.label")}
+          </span>
+          <Button size="sm" variant="secondary" onClick={fillToastDemoCsv} disabled={busy}>
+            🍞 {t("dash.source.toast")}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={syncSquare} disabled={busy || !venueId}>
+            ⬛ {t("dash.source.square")}
+          </Button>
+          {syncMessage && <span className="text-sm text-emerald-700">{syncMessage}</span>}
+        </div>
         <textarea
           className={`${inputClass} h-32 font-mono text-xs leading-relaxed`}
           placeholder="provider,venue_external_id,worker_external_id,..."

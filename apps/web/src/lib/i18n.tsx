@@ -282,6 +282,13 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
   "dash.progress.failed": { ko: "실패", en: "Failed" },
   "dash.payout.refPlaceholder": { ko: "급여 이체 참조번호", en: "Payroll transfer reference" },
+  "dash.source.label": { ko: "데이터 소스", en: "Data sources" },
+  "dash.source.toast": { ko: "Toast POS (데모 데이터 생성)", en: "Toast POS (demo data)" },
+  "dash.source.square": { ko: "Square Sandbox 동기화", en: "Sync Square Sandbox" },
+  "dash.source.syncQueued": {
+    ko: "동기화 요청됨 — 잠시 후 자동 반영됩니다",
+    en: "Sync queued — updates arrive shortly",
+  },
   "dash.payout.refConfirm": { ko: "기록", en: "Record" },
   "dash.payout.refCancel": { ko: "취소", en: "Cancel" },
   "dash.payout.noWallet": {

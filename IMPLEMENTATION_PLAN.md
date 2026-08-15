@@ -494,3 +494,4 @@ Phase 2에서 14/14 통과했으며, 현재 GitHub Actions에는 Anchor job이 �
 4. **Square Sandbox 계정·앱 등록**은 리드타임이 있으므로 Phase 1 진행 중 미리 신청.
 5. **반올림·정밀도**: USD 금액은 decimal(소수점 2자리), USDC는 6 decimals — 변환 규칙을 shared 패키지에 단일 구현.
 6. **embedded wallet, gas sponsorship, 보고서 hash 온체인 앵커** 등 §2.2 선택 기능은 전 Phase 완료 후 여유 시에만 착수.
+7. **Legacy 증빙 참조 제안(datalist)**: 급여 연동이 payroll-first(급여사 webhook으로 PayrollRecord 선입수)로 바뀌면, 지급 화면의 legacy 참조 입력에 해당 워커의 `providerReference` 검색형 제안을 추가한다 (현재는 지급이 payroll 임포트보다 선행이라 후보가 항상 비어 있고, 매니저의 payroll 조회 권한도 소득 엔트리 존재를 전제로 해 접근 조정 필요).
