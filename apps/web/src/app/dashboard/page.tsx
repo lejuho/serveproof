@@ -258,7 +258,13 @@ export default function DashboardPage() {
       } catch (e) {
         // 실패를 그 행에 그대로 표시 — "생성 중…"으로 고착되지 않게
         const message = e instanceof Error ? e.message : String(e);
-        setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
+        // §29.7 가드: 직전 시도의 온체인 검증이 끝나기 전엔 재서명 불가
+        setProgress(
+          allocationId,
+          message.includes("Payout is CONFIRMED") || message.includes("Payout is SUBMITTED")
+            ? t("dash.progress.verifying")
+            : `${t("dash.progress.failed")}: ${message}`,
+        );
         throw e;
       }
     });
