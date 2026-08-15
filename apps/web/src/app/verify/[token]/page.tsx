@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Badge, Card, LanguageToggle, Logo, tableCellClass, tableHeadClass } from "@/components/ui";
 import { useI18n } from "@/lib/i18n";
@@ -124,6 +124,7 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                     </p>
                   </div>
                 ) : (
+                  <>
                   <dl className="grid grid-cols-[190px_1fr] gap-y-2.5 text-[15px]">
                     <dt className="text-zinc-400">{t("verify.totalIncome")}</dt>
                     <dd className="font-bold tabular-nums text-zinc-900">
@@ -153,7 +154,37 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                         </dd>
                       </>
                     )}
+                    {typeof disclosed.observedShiftDays === "number" && (
+                      <>
+                        <dt className="text-zinc-400">{t("verify.observedDays")}</dt>
+                        <dd>{String(disclosed.observedShiftDays)}</dd>
+                      </>
+                    )}
                   </dl>
+                {disclosed.monthlyBreakdown &&
+                  Object.keys(disclosed.monthlyBreakdown as Record<string, number>).length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-zinc-600">
+                        {t("verify.monthly.title")}
+                      </p>
+                      <dl className="mt-1.5 grid grid-cols-[190px_1fr] gap-y-1.5 text-sm">
+                        {Object.entries(disclosed.monthlyBreakdown as Record<string, number>)
+                          .sort()
+                          .map(([month, cents]) => (
+                            <React.Fragment key={month}>
+                              <dt className="font-mono text-zinc-400">{month}</dt>
+                              <dd className="tabular-nums text-zinc-800">{usd(cents)}</dd>
+                            </React.Fragment>
+                          ))}
+                      </dl>
+                    </div>
+                  )}
+                {Number(disclosed.monthsCovered) <= 1 && (
+                  <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
+                    {t("verify.shortWindow")}
+                  </p>
+                )}
+                  </>
                 )}
                 {Array.isArray(disclosed.entries) && (
                   <div className="mt-4 overflow-x-auto">

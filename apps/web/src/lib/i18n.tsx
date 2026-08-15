@@ -138,7 +138,7 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.title": { ko: "내 소득", en: "My income" },
   "me.stat.allocated": { ko: "확정 배분 총액", en: "Total allocated" },
   "me.stat.paid": { ko: "실지급 총액", en: "Total paid" },
-  "me.stat.avg": { ko: "월평균 배분", en: "Avg monthly" },
+  "me.stat.avg": { ko: "관측 월 기준 평균", en: "Avg per observed month" },
   "me.stat.payers": { ko: "사업장 · 시프트", en: "Venues · Shifts" },
   "me.alerts.title": { ko: "알림 (Discrepancy)", en: "Alerts (Discrepancy)" },
   "me.alerts.desc": {
@@ -262,6 +262,15 @@ const dict: Record<string, { ko: string; en: string }> = {
   "verify.bestGrade": { ko: "최고 증거 등급", en: "Best evidence grade" },
   "verify.corrections": { ko: "정정 이력", en: "Corrections" },
   "verify.posShare": { ko: "POS 연동 증거 비율", en: "POS-verified evidence" },
+  "verify.observedDays": { ko: "관측 근무일수", en: "Observed shift days" },
+  "verify.monthly.title": {
+    ko: "월별 내역 (관측값, 외삽 없음)",
+    en: "Monthly breakdown (observed, not extrapolated)",
+  },
+  "verify.shortWindow": {
+    ko: "관측 기간이 1개월 이하입니다. 월평균 소득 해석에 주의하세요 — 이 보고서는 관측된 값만 담으며 추정하지 않습니다.",
+    en: "Observation window is one month or less. Interpret the monthly average with care — this report states observations only, never estimates.",
+  },
   "dash.todo.title": { ko: "오늘 할 일", en: "Needs attention" },
   "dash.todo.desc": {
     ko: "이 사업장에서 매니저 처리가 필요한 항목입니다.",

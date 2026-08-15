@@ -134,6 +134,17 @@ export class DisclosureService {
     for (const e of inRange) grades[e.evidenceGrade] = (grades[e.evidenceGrade] ?? 0) + 1;
     const bestGrade = ["A", "B", "C", "D", "E"].find((g) => grades[g]) ?? "E";
     const hasCorrections = inRange.some((e) => e.correctionOfId !== null);
+    // No extrapolation (spec §21 — a proof states observations, not estimates):
+    // the average divides by observed calendar months, so the verifier also
+    // gets the per-month breakdown and the actual observed day count.
+    const monthlyBreakdown: Record<string, number> = {};
+    for (const e of inRange) {
+      const month = e.shift?.businessDate?.slice(0, 7);
+      if (!month) continue;
+      monthlyBreakdown[month] = (monthlyBreakdown[month] ?? 0) + e.allocatedUsdCents;
+    }
+    const observedShiftDays = new Set(inRange.map((e) => e.shift?.businessDate).filter(Boolean))
+      .size;
     // share of shifts whose evidence came straight from a POS/provider API,
     // i.e. not self-reported by the venue — a verifier-facing trust signal
     const posVerifiedSharePct =
@@ -167,6 +178,8 @@ export class DisclosureService {
       totalVerifiedIncomeUsdCents: totalAllocated,
       totalPaidUsdCents: totalPaid,
       posVerifiedSharePct,
+      monthlyBreakdown,
+      observedShiftDays,
     };
     if (grant.level === "LEVEL_2") return level2;
 
@@ -299,6 +312,17 @@ export class DisclosureService {
       doc.text(`Corrections present: ${s.hasCorrections ? "yes" : "no"}`);
       if (typeof s.posVerifiedSharePct === "number") {
         doc.text(`POS-verified evidence share: ${s.posVerifiedSharePct}%`);
+      }
+      if (typeof s.observedShiftDays === "number") {
+        doc.text(`Observed shift days: ${s.observedShiftDays}`);
+      }
+      if (s.monthlyBreakdown && typeof s.monthlyBreakdown === "object") {
+        doc.moveDown(0.3);
+        doc.text("Monthly breakdown (observed, not extrapolated):");
+        for (const [month, cents] of Object.entries(s.monthlyBreakdown as Record<string, number>)
+          .sort()) {
+          doc.text(`  ${month}: ${usd(cents)}`);
+        }
       }
       if (Array.isArray(s.entries)) {
         doc.moveDown(0.5);
