@@ -30,6 +30,7 @@ interface ImportSummary {
   shiftsUpserted: number;
   mappedShifts: number;
   unmappedShifts: number;
+  businessDates?: string[];
   errors: { line: number; message: string }[];
 }
 interface PendingMapping {
@@ -171,6 +172,9 @@ export default function DashboardPage() {
         body: { venueId, csvText },
       });
       setImportResult(result);
+      // 임포트된 CSV의 최신 영업일을 계산 날짜로 자동 선택
+      const latest = result.businessDates?.at(-1);
+      if (latest) setBusinessDate(latest);
       refreshUnmapped();
     });
 
@@ -357,6 +361,12 @@ export default function DashboardPage() {
                   {importResult.errors.length > 0 && (
                     <span className="text-red-600"> — 오류 {importResult.errors.length}건</span>
                   )}
+                  {!!importResult.businessDates?.length && (
+                    <span className="text-emerald-700">
+                      {" "}
+                      — 영업일 {importResult.businessDates.join(", ")} 감지, 계산 날짜 자동 선택됨
+                    </span>
+                  )}
                 </>
               ) : (
                 <>
@@ -365,6 +375,11 @@ export default function DashboardPage() {
                   {importResult.mappedShifts} mapped / {importResult.unmappedShifts} unmapped)
                   {importResult.errors.length > 0 && (
                     <span className="text-red-600"> — {importResult.errors.length} errors</span>
+                  )}
+                  {!!importResult.businessDates?.length && (
+                    <span className="text-emerald-700">
+                      {" "}
+                      — detected {importResult.businessDates.join(", ")}; calc date auto-selected</span>
                   )}
                 </>
               )}

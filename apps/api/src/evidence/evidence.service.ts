@@ -7,6 +7,7 @@ export interface CsvImportSummary {
   shiftsUpserted: number;
   mappedShifts: number;
   unmappedShifts: number;
+  businessDates: string[];
   errors: { line: number; message: string }[];
 }
 
@@ -102,11 +103,21 @@ export class EvidenceService {
       shiftsUpserted++;
     }
 
+    // distinct business dates seen in this import, so the UI can preselect
+    // the calculation date instead of asking the manager to retype it
+    const businessDates = [
+      ...new Set([
+        ...normalized.shifts.map((s) => s.businessDate),
+        ...normalized.tips.map((t) => t.businessDate),
+      ]),
+    ].sort();
+
     return {
       tipsUpserted,
       shiftsUpserted,
       mappedShifts,
       unmappedShifts,
+      businessDates,
       errors: normalized.errors,
     };
   }
