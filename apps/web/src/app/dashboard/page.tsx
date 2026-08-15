@@ -89,8 +89,10 @@ export default function DashboardPage() {
     unmappedWorkerCount: number;
     uncalculatedDates: string[];
     awaitingApprovalCount: number;
+    awaitingApproval?: { id: string; businessDate: string; status: string }[];
     unpaidAllocationCount: number;
     unpaidTotalUsdCents: number;
+    unpaidBatches?: { id: string; businessDate: string; status: string; unpaidCount: number }[];
   } | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [venueSigner, setVenueSigner] = useState<string | null>(null);
@@ -198,6 +200,18 @@ export default function DashboardPage() {
       if (!batch) return;
       await api(`/allocation-batches/${batch.id}/approve`, { method: "POST", body: {} });
       await refreshBatch();
+      refreshUnmapped();
+    });
+
+  const scrollToCard = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // 오늘 할 일 타일 클릭 → 해당 배치를 3단계 카드에 로드하고 이동
+  const openBatch = (b: { id: string; businessDate: string }) =>
+    run(async () => {
+      setBusinessDate(b.businessDate);
+      setBatch(await api<Batch>(`/allocation-batches/${b.id}`));
+      scrollToCard("card-alloc");
     });
 
   const setProgress = (allocationId: string, message: string) =>
@@ -230,6 +244,7 @@ export default function DashboardPage() {
         await new Promise((r) => setTimeout(r, 3000));
       }
       await refreshBatch();
+      refreshUnmapped();
     });
 
   const payLegacy = (allocationId: string) =>
@@ -297,17 +312,37 @@ export default function DashboardPage() {
                 label: t("dash.todo.unmapped"),
                 value: String(actionItems.unmappedWorkerCount),
                 urgent: actionItems.unmappedWorkerCount > 0,
+                action:
+                  actionItems.unmappedWorkerCount > 0
+                    ? () => scrollToCard("card-mapping")
+                    : undefined,
+                cta: t("dash.todo.cta.map"),
               },
               {
                 label: t("dash.todo.uncalculated"),
                 value: String(actionItems.uncalculatedDates.length),
                 detail: actionItems.uncalculatedDates.slice(0, 3).join(", "),
                 urgent: actionItems.uncalculatedDates.length > 0,
+                action: actionItems.uncalculatedDates.length
+                  ? () => {
+                      setBusinessDate(actionItems.uncalculatedDates[0] ?? businessDate);
+                      scrollToCard("card-alloc");
+                    }
+                  : undefined,
+                cta: t("dash.todo.cta.calc"),
               },
               {
                 label: t("dash.todo.approval"),
                 value: String(actionItems.awaitingApprovalCount),
+                detail: actionItems.awaitingApproval
+                  ?.slice(0, 2)
+                  .map((b) => b.businessDate)
+                  .join(", "),
                 urgent: actionItems.awaitingApprovalCount > 0,
+                action: actionItems.awaitingApproval?.length
+                  ? () => openBatch(actionItems.awaitingApproval![0])
+                  : undefined,
+                cta: t("dash.todo.cta.review"),
               },
               {
                 label: t("dash.todo.unpaid"),
@@ -317,12 +352,21 @@ export default function DashboardPage() {
                     ? usd(actionItems.unpaidTotalUsdCents)
                     : undefined,
                 urgent: actionItems.unpaidAllocationCount > 0,
+                action: actionItems.unpaidBatches?.length
+                  ? () => openBatch(actionItems.unpaidBatches![0])
+                  : undefined,
+                cta: t("dash.todo.cta.pay"),
               },
             ].map((item) => (
-              <div
+              <button
                 key={item.label}
-                className={`rounded-xl border p-4 ${
-                  item.urgent ? "border-amber-300 bg-amber-50/70" : "border-zinc-200 bg-zinc-50/60"
+                type="button"
+                onClick={item.action}
+                disabled={!item.action}
+                className={`rounded-xl border p-4 text-left transition ${
+                  item.urgent
+                    ? "cursor-pointer border-amber-300 bg-amber-50/70 hover:border-amber-400 hover:shadow-sm"
+                    : "cursor-default border-zinc-200 bg-zinc-50/60"
                 }`}
               >
                 <p className="text-xs font-medium text-zinc-500">{item.label}</p>
@@ -334,7 +378,10 @@ export default function DashboardPage() {
                   {item.value}
                 </p>
                 {item.detail && <p className="mt-0.5 text-xs text-zinc-500">{item.detail}</p>}
-              </div>
+                {item.action && (
+                  <p className="mt-2 text-xs font-semibold text-amber-700">{item.cta} →</p>
+                )}
+              </button>
             ))}
           </div>
         </Card>
@@ -388,6 +435,7 @@ export default function DashboardPage() {
         </div>
       </Card>
 
+      <div id="card-mapping" className="scroll-mt-6" />
       <Card step={2} title="Worker Mapping" description={t("dash.mapping.desc")}>
         {unmapped && unmapped.pendingMappings.length === 0 ? (
           <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
@@ -418,6 +466,7 @@ export default function DashboardPage() {
         )}
       </Card>
 
+      <div id="card-alloc" className="scroll-mt-6" />
       <Card step={3} title={t("dash.alloc.title")} description={t("dash.alloc.desc")}>
         <div className="flex flex-wrap items-center gap-3">
           <input

@@ -87,7 +87,7 @@ export class OrganizationsService {
       }),
       this.prisma.allocationBatch.findMany({
         where: { venueId },
-        select: { businessDate: true, status: true },
+        select: { id: true, businessDate: true, status: true },
       }),
       this.prisma.shiftEvidence.findMany({
         where: { venueId },
@@ -99,7 +99,10 @@ export class OrganizationsService {
           payoutStatus: "UNPAID",
           batch: { venueId, status: { in: ["PAYABLE", "PARTIALLY_PAID"] } },
         },
-        select: { netAllocatedUsdCents: true },
+        select: {
+          netAllocatedUsdCents: true,
+          batch: { select: { id: true, businessDate: true, status: true } },
+        },
       }),
     ]);
     const batchDates = new Set(batches.map((b) => b.businessDate));
@@ -108,14 +111,28 @@ export class OrganizationsService {
       .filter((d) => !batchDates.has(d))
       .sort()
       .reverse();
+    const awaitingApproval = batches
+      .filter((b) => ["CALCULATED", "REVIEW_REQUIRED"].includes(b.status))
+      .sort((a, b) => b.businessDate.localeCompare(a.businessDate));
+    const unpaidBatchMap = new Map<
+      string,
+      { id: string; businessDate: string; status: string; unpaidCount: number }
+    >();
+    for (const a of unpaidAllocations) {
+      const entry = unpaidBatchMap.get(a.batch.id) ?? { ...a.batch, unpaidCount: 0 };
+      entry.unpaidCount += 1;
+      unpaidBatchMap.set(a.batch.id, entry);
+    }
     return {
       unmappedWorkerCount: unmappedShiftWorkers.length,
       uncalculatedDates,
-      awaitingApprovalCount: batches.filter((b) =>
-        ["CALCULATED", "REVIEW_REQUIRED"].includes(b.status),
-      ).length,
+      awaitingApprovalCount: awaitingApproval.length,
+      awaitingApproval,
       unpaidAllocationCount: unpaidAllocations.length,
       unpaidTotalUsdCents: unpaidAllocations.reduce((s, a) => s + a.netAllocatedUsdCents, 0),
+      unpaidBatches: [...unpaidBatchMap.values()].sort((a, b) =>
+        b.businessDate.localeCompare(a.businessDate),
+      ),
     };
   }
 

@@ -280,6 +280,10 @@ const dict: Record<string, { ko: string; en: string }> = {
   "dash.todo.uncalculated": { ko: "미계산 영업일", en: "Uncalculated dates" },
   "dash.todo.approval": { ko: "승인 대기 배치", en: "Batches awaiting approval" },
   "dash.todo.unpaid": { ko: "미지급 배분", en: "Unpaid allocations" },
+  "dash.todo.cta.map": { ko: "매핑하러 가기", en: "Go map workers" },
+  "dash.todo.cta.calc": { ko: "계산하러 가기", en: "Go calculate" },
+  "dash.todo.cta.review": { ko: "검토·승인하기", en: "Review & approve" },
+  "dash.todo.cta.pay": { ko: "지급하러 가기", en: "Go pay" },
   "verify.yes": { ko: "있음", en: "Yes" },
   "verify.no": { ko: "없음", en: "No" },
   "verify.footer": {
