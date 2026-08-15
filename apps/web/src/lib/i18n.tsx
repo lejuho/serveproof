@@ -298,6 +298,8 @@ const dict: Record<string, { ko: string; en: string }> = {
     en: "Connect a wallet to receive USDC tips — without one the venue cannot pay you on-chain.",
   },
   "me.banner.goConnect": { ko: "지갑 연결하러 가기", en: "Go connect a wallet" },
+  "me.wallet.connect": { ko: "지갑 연결 (Phantom)", en: "Connect wallet (Phantom)" },
+  "me.wallet.connectMore": { ko: "다른 지갑 추가", en: "Add another wallet" },
   "dash.payout.refConfirm": { ko: "기록", en: "Record" },
   "dash.payout.refCancel": { ko: "취소", en: "Cancel" },
   "dash.payout.noWallet": {

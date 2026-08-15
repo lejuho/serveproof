@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import * as QRCode from "qrcode";
 import { api, ApiError, clearTokens, getToken } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { connectWallet } from "@/lib/wallet";
 import {
   AppShell,
   Badge,
@@ -179,6 +180,21 @@ export default function MyIncomePage() {
       setLastReportId(created.report.id);
       setQrDataUrl(await QRCode.toDataURL(created.shareUrl, { width: 180, margin: 1 }));
       refreshGrants();
+    } catch (e) {
+      guard(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Phantom/Solflare 연결 → 주소를 수취 지갑으로 등록 (첫 지갑은 자동 기본 지정). */
+  async function registerWallet() {
+    setBusy(true);
+    setError(null);
+    try {
+      const address = await connectWallet();
+      await api("/workers/me/wallets", { method: "POST", body: { address } });
+      setMe(await api<Me>("/workers/me"));
     } catch (e) {
       guard(e);
     } finally {
@@ -513,6 +529,11 @@ export default function MyIncomePage() {
               ))}
             </ul>
           )}
+          <div className="mt-4">
+            <Button variant="violet" onClick={registerWallet} disabled={busy}>
+              {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
+            </Button>
+          </div>
         </Card>
       )}
     </AppShell>
