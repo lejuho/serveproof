@@ -356,6 +356,19 @@ export default function DashboardPage() {
     >
       {error && <Callout tone="red">{error}</Callout>}
 
+      {walletAddress && venueSigner && walletAddress !== venueSigner && (
+        <Callout tone="amber">
+          {t("dash.banner.signerMismatch")}{" "}
+          <code className="font-mono text-xs">
+            {walletAddress.slice(0, 8)}…{walletAddress.slice(-6)}
+          </code>{" "}
+          ≠{" "}
+          <code className="font-mono text-xs">
+            {venueSigner.slice(0, 8)}…{venueSigner.slice(-6)}
+          </code>
+        </Callout>
+      )}
+
       {actionItems && (
         <Card title={t("dash.todo.title")} description={t("dash.todo.desc")}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

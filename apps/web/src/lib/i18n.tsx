@@ -289,6 +289,15 @@ const dict: Record<string, { ko: string; en: string }> = {
     ko: "동기화 요청됨 — 잠시 후 자동 반영됩니다",
     en: "Sync queued — updates arrive shortly",
   },
+  "dash.banner.signerMismatch": {
+    ko: "연결된 지갑이 venue 서명 지갑과 다릅니다 — 이 상태로는 USDC 지급 서명이 거부됩니다.",
+    en: "Connected wallet differs from the venue signer — USDC payout signing will be rejected.",
+  },
+  "me.banner.noWallet": {
+    ko: "USDC 팁을 받으려면 수령 지갑을 연결해야 합니다. 지갑이 없으면 사업장이 지급을 진행할 수 없습니다.",
+    en: "Connect a wallet to receive USDC tips — without one the venue cannot pay you on-chain.",
+  },
+  "me.banner.goConnect": { ko: "지갑 연결하러 가기", en: "Go connect a wallet" },
   "dash.payout.refConfirm": { ko: "기록", en: "Record" },
   "dash.payout.refCancel": { ko: "취소", en: "Cancel" },
   "dash.payout.noWallet": {

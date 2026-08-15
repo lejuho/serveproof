@@ -236,6 +236,25 @@ export default function MyIncomePage() {
     >
       {error && <Callout tone="red">{error}</Callout>}
 
+      {me &&
+        me.wallets.length === 0 &&
+        timeline.some((e) => e.payoutRail === "USDC" || e.allocatedUsdCents > e.paidUsdCents) && (
+          <Callout tone="amber">
+            {t("me.banner.noWallet")}{" "}
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("card-wallet")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className="font-semibold underline underline-offset-2 hover:opacity-80"
+            >
+              {t("me.banner.goConnect")} →
+            </button>
+          </Callout>
+        )}
+
       {summary && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard label={t("me.stat.allocated")} value={usd(summary.totals.allocatedUsdCents)} />
@@ -477,6 +496,7 @@ export default function MyIncomePage() {
         )}
       </Card>
 
+      <div id="card-wallet" className="scroll-mt-6" />
       {me && (
         <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
           {me.wallets.length === 0 ? (
