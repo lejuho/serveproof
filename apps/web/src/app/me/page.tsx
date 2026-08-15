@@ -39,6 +39,7 @@ interface TimelineEntry {
   payrollReportedUsdCents: number;
   withholdingStatus: "UNKNOWN" | "PENDING" | "CONFIRMED";
   payoutRail: string | null;
+  payoutTxSignature: string | null;
   evidenceGrade: string;
   ingestSource: "CSV_UPLOAD" | "PROVIDER_API" | null;
   isCorrection: boolean;
@@ -95,6 +96,8 @@ export default function MyIncomePage() {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [level, setLevel] = useState("LEVEL_2");
   const [purpose, setPurpose] = useState("임대 계약 소득증명");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"sent" | "failed" | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [lastReportId, setLastReportId] = useState<string | null>(null);
@@ -149,7 +152,11 @@ export default function MyIncomePage() {
       start.setMonth(start.getMonth() - 3); // 최근 3개월 (§26 step 20)
       const expiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      const created = await api<{ grant: { id: string }; shareUrl: string }>("/disclosures", {
+      const created = await api<{
+        grant: { id: string };
+        shareUrl: string;
+        emailSent?: boolean;
+      }>("/disclosures", {
         method: "POST",
         body: {
           purpose,
@@ -159,8 +166,12 @@ export default function MyIncomePage() {
           expiresAt: expiry.toISOString(),
           allowDownload: true,
           ...(level === "LEVEL_1" ? { thresholdUsdCents: 300000 } : {}),
+          ...(recipientEmail.trim() ? { recipientEmail: recipientEmail.trim() } : {}),
         },
       });
+      setEmailStatus(
+        created.emailSent === undefined ? null : created.emailSent ? "sent" : "failed",
+      );
       const issued = await api<{ report: { id: string } }>("/reports", {
         method: "POST",
         body: { disclosureGrantId: created.grant.id, shareUrl: created.shareUrl },
@@ -301,7 +312,19 @@ export default function MyIncomePage() {
                     <Badge tone={entry.withholdingStatus}>{entry.withholdingStatus}</Badge>
                   </td>
                   <td className={`${tableCellClass} text-sm text-zinc-500`}>
-                    {entry.payoutRail ?? "—"}
+                    {entry.payoutRail === "USDC" && entry.payoutTxSignature ? (
+                      <a
+                        href={`https://explorer.solana.com/tx/${entry.payoutTxSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-800"
+                        title={t("me.explorer.title")}
+                      >
+                        USDC ↗
+                      </a>
+                    ) : (
+                      (entry.payoutRail ?? "—")
+                    )}
                   </td>
                   <td className={tableCellClass}>
                     <SourceBadge ingestSource={entry.ingestSource} t={t} />
@@ -318,6 +341,29 @@ export default function MyIncomePage() {
 
       <Card title={t("me.share.title")} description={t("me.share.desc")}>
         <div className="flex flex-wrap items-center gap-3">
+          <select
+            className={`${inputClass} w-auto`}
+            defaultValue=""
+            onChange={(e) => {
+              // 용도 프리셋 — 수준·목적을 실사용 시나리오로 한 번에 세팅
+              const preset = e.target.value;
+              if (preset === "rent") {
+                setLevel("LEVEL_1");
+                setPurpose(t("me.share.preset.rent.purpose"));
+              } else if (preset === "loan") {
+                setLevel("LEVEL_2");
+                setPurpose(t("me.share.preset.loan.purpose"));
+              } else if (preset === "tax") {
+                setLevel("LEVEL_3");
+                setPurpose(t("me.share.preset.tax.purpose"));
+              }
+            }}
+          >
+            <option value="">{t("me.share.preset.custom")}</option>
+            <option value="rent">{t("me.share.preset.rent")}</option>
+            <option value="loan">{t("me.share.preset.loan")}</option>
+            <option value="tax">{t("me.share.preset.tax")}</option>
+          </select>
           <input
             className={`${inputClass} w-auto min-w-52`}
             value={purpose}
@@ -333,10 +379,28 @@ export default function MyIncomePage() {
             <option value="LEVEL_2">{t("me.share.l2")}</option>
             <option value="LEVEL_3">{t("me.share.l3")}</option>
           </select>
+          <input
+            className={`${inputClass} w-auto min-w-56`}
+            type="email"
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+            placeholder={t("me.share.recipient")}
+          />
           <Button onClick={createDisclosure} disabled={busy}>
             {t("me.share.issue")}
           </Button>
         </div>
+        {emailStatus && (
+          <p
+            className={`mt-3 rounded-lg px-3.5 py-2.5 text-sm ${
+              emailStatus === "sent"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            {emailStatus === "sent" ? t("me.share.emailSent") : t("me.share.emailFailed")}
+          </p>
+        )}
 
         {shareUrl && (
           <div className="mt-4 flex items-start gap-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-5">

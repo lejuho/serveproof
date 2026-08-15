@@ -17,6 +17,6 @@ import { MailService } from "./mail.service";
   ],
   controllers: [AuthController],
   providers: [AuthService, AccessService, MailService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
-  exports: [AccessService],
+  exports: [AccessService, MailService],
 })
 export class AuthModule {}

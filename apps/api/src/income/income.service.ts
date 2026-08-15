@@ -240,6 +240,7 @@ export class IncomeService {
           },
         },
         venue: { select: { id: true, name: true } },
+        payout: { select: { txSignature: true } },
       },
       orderBy: { createdAt: "asc" },
     });
@@ -256,6 +257,7 @@ export class IncomeService {
       payrollReportedUsdCents: e.payrollReportedUsdCents,
       withholdingStatus: e.withholdingStatus,
       payoutRail: e.payoutRail,
+      payoutTxSignature: e.payout?.txSignature ?? null,
       evidenceGrade: e.evidenceGrade,
       isCorrection: e.correctionOfId !== null,
       correctionReason: e.correctionReason,

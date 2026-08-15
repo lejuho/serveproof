@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { Public } from "../auth/public.decorator";
 import { CurrentUser, type AuthenticatedUser } from "../auth/current-user.decorator";
+import { MailService } from "../auth/mail.service";
 import { parseBody } from "../common/zod";
 import { DisclosureService } from "./disclosure.service";
 
@@ -38,16 +39,52 @@ const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
 @Controller()
 export class DisclosureController {
-  constructor(private readonly disclosure: DisclosureService) {}
+  constructor(
+    private readonly disclosure: DisclosureService,
+    private readonly mail: MailService,
+  ) {}
 
   // Spec §22 — POST /disclosures (raw token returned exactly once)
   @Post("disclosures")
   async create(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const input = parseBody(createGrantSchema, body);
     const { grant, rawToken } = await this.disclosure.createGrant(user.id, input);
+    const shareUrl = `${WEB_ORIGIN}/verify/${rawToken}`;
+
+    // The raw token only exists right now, so recipient delivery must happen
+    // here. A mail failure must not lose the one-time link — report it instead.
+    let emailSent: boolean | undefined;
+    let emailError: string | undefined;
+    if (input.recipientEmail) {
+      try {
+        await this.mail.send(
+          input.recipientEmail,
+          `[ServeProof] 소득 증빙 공유 — ${input.purpose}`,
+          [
+            `ServeProof 소득 증빙이 공유되었습니다.`,
+            "",
+            `용도: ${input.purpose}`,
+            `공개 수준: ${input.level}`,
+            `만료: ${new Date(input.expiresAt).toISOString().slice(0, 10)}`,
+            "",
+            `아래 링크에서 진위를 직접 확인할 수 있습니다 (계정 불필요):`,
+            shareUrl,
+            "",
+            `An income proof has been shared with you via ServeProof.`,
+            `Verify it at the link above — no account required.`,
+          ].join("\n"),
+        );
+        emailSent = true;
+      } catch (error) {
+        emailSent = false;
+        emailError = error instanceof Error ? error.message : String(error);
+      }
+    }
     return {
       grant,
-      shareUrl: `${WEB_ORIGIN}/verify/${rawToken}`,
+      shareUrl,
+      emailSent,
+      emailError,
       note: "이 URL은 지금 한 번만 표시됩니다. DB에는 토큰 해시만 저장됩니다.",
     };
   }

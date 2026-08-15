@@ -68,6 +68,13 @@ export class OrganizationsController {
     return this.organizations.getVenue(venueId);
   }
 
+  // Operational inbox: what still needs a manager's attention today
+  @Get("venues/:id/action-items")
+  async actionItems(@CurrentUser() user: AuthenticatedUser, @Param("id") venueId: string) {
+    await this.access.assertVenueRole(user.id, venueId, VENUE_READ_ROLES);
+    return this.organizations.actionItems(venueId);
+  }
+
   @Post("venues/:id/wallet")
   async setWallet(
     @CurrentUser() user: AuthenticatedUser,

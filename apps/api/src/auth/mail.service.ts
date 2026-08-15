@@ -42,6 +42,12 @@ export class MailService {
   }
 
   async sendOtp(to: string, code: string): Promise<void> {
+    const { subject, text } = this.otpBody(code);
+    return this.send(to, subject, text);
+  }
+
+  /** Generic transactional send used for OTP and disclosure-share mail. */
+  async send(to: string, subject: string, text: string): Promise<void> {
     if (!this.enabled) {
       throw new ServiceUnavailableException(
         "Email delivery is not configured (BREVO_API_KEY / SMTP_HOST unset)",
@@ -51,19 +57,18 @@ export class MailService {
       // Railway blocks outbound SMTP (25/465/587) below the Pro plan, so an
       // HTTPS API is the reliable path there; SMTP remains for local/Pro.
       if (this.brevoApiKey) {
-        await this.sendViaBrevo(to, code);
+        await this.sendViaBrevo(to, subject, text);
         return;
       }
-      await this.sendViaSmtp(to, code);
+      await this.sendViaSmtp(to, subject, text);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`OTP mail send failed for ${to}: ${message}`);
-      throw new ServiceUnavailableException(`OTP email delivery failed: ${message}`);
+      this.logger.error(`mail send failed for ${to}: ${message}`);
+      throw new ServiceUnavailableException(`Email delivery failed: ${message}`);
     }
   }
 
-  private async sendViaBrevo(to: string, code: string): Promise<void> {
-    const { subject, text } = this.otpBody(code);
+  private async sendViaBrevo(to: string, subject: string, text: string): Promise<void> {
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "api-key": this.brevoApiKey as string, "content-type": "application/json" },
@@ -80,7 +85,7 @@ export class MailService {
     }
   }
 
-  private async sendViaSmtp(to: string, code: string): Promise<void> {
+  private async sendViaSmtp(to: string, subject: string, text: string): Promise<void> {
     if (!this.host) {
       throw new ServiceUnavailableException("Email delivery is not configured (SMTP_HOST unset)");
     }
@@ -96,7 +101,6 @@ export class MailService {
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
     });
-    const { subject, text } = this.otpBody(code);
     try {
       await transporter.sendMail({ from: `ServeProof <${this.from}>`, to, subject, text });
     } finally {

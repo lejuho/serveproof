@@ -84,6 +84,13 @@ export default function DashboardPage() {
     entriesUpserted: number;
     alerts: number;
   } | null>(null);
+  const [actionItems, setActionItems] = useState<{
+    unmappedWorkerCount: number;
+    uncalculatedDates: string[];
+    awaitingApprovalCount: number;
+    unpaidAllocationCount: number;
+    unpaidTotalUsdCents: number;
+  } | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [venueSigner, setVenueSigner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +125,7 @@ export default function DashboardPage() {
   const refreshUnmapped = useCallback(() => {
     if (!venueId) return;
     api<UnmappedResponse>(`/venues/${venueId}/unmapped-workers`).then(setUnmapped).catch(guard);
+    api<typeof actionItems>(`/venues/${venueId}/action-items`).then(setActionItems).catch(guard);
   }, [venueId, guard]);
 
   useEffect(() => {
@@ -276,6 +284,57 @@ export default function DashboardPage() {
       }
     >
       {error && <Callout tone="red">{error}</Callout>}
+
+      {actionItems && (
+        <Card title={t("dash.todo.title")} description={t("dash.todo.desc")}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                label: t("dash.todo.unmapped"),
+                value: String(actionItems.unmappedWorkerCount),
+                urgent: actionItems.unmappedWorkerCount > 0,
+              },
+              {
+                label: t("dash.todo.uncalculated"),
+                value: String(actionItems.uncalculatedDates.length),
+                detail: actionItems.uncalculatedDates.slice(0, 3).join(", "),
+                urgent: actionItems.uncalculatedDates.length > 0,
+              },
+              {
+                label: t("dash.todo.approval"),
+                value: String(actionItems.awaitingApprovalCount),
+                urgent: actionItems.awaitingApprovalCount > 0,
+              },
+              {
+                label: t("dash.todo.unpaid"),
+                value: `${actionItems.unpaidAllocationCount}`,
+                detail:
+                  actionItems.unpaidAllocationCount > 0
+                    ? usd(actionItems.unpaidTotalUsdCents)
+                    : undefined,
+                urgent: actionItems.unpaidAllocationCount > 0,
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-xl border p-4 ${
+                  item.urgent ? "border-amber-300 bg-amber-50/70" : "border-zinc-200 bg-zinc-50/60"
+                }`}
+              >
+                <p className="text-xs font-medium text-zinc-500">{item.label}</p>
+                <p
+                  className={`mt-1 text-2xl font-bold tabular-nums ${
+                    item.urgent ? "text-amber-700" : "text-zinc-400"
+                  }`}
+                >
+                  {item.value}
+                </p>
+                {item.detail && <p className="mt-0.5 text-xs text-zinc-500">{item.detail}</p>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card step={1} title="CSV Import" description={t("dash.csv.desc")}>
         <textarea

@@ -188,6 +188,26 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.share.revoked": { ko: "철회됨", en: "Revoked" },
   "me.share.revoke": { ko: "철회", en: "Revoke" },
   "me.share.pdfFail": { ko: "PDF 다운로드 실패", en: "PDF download failed" },
+  "me.share.recipient": { ko: "수신자 이메일 (선택)", en: "Recipient email (optional)" },
+  "me.share.emailSent": {
+    ko: "검증 링크가 수신자 이메일로 발송되었습니다.",
+    en: "The verification link was emailed to the recipient.",
+  },
+  "me.share.emailFailed": {
+    ko: "이메일 발송에 실패했습니다. 아래 링크를 직접 전달하세요.",
+    en: "Email delivery failed. Share the link below manually.",
+  },
+  "me.share.preset.custom": { ko: "용도 프리셋…", en: "Purpose preset…" },
+  "me.share.preset.rent": { ko: "집주인 · 렌트 심사", en: "Landlord · rent check" },
+  "me.share.preset.rent.purpose": { ko: "임대 계약 소득 기준 충족 확인", en: "Rent application income check" },
+  "me.share.preset.loan": { ko: "대출 심사", en: "Loan underwriting" },
+  "me.share.preset.loan.purpose": { ko: "대출 심사용 소득 요약", en: "Income summary for loan review" },
+  "me.share.preset.tax": { ko: "세무 신고", en: "Tax filing" },
+  "me.share.preset.tax.purpose": { ko: "세무 신고용 시프트별 상세", en: "Per-shift detail for tax filing" },
+  "me.explorer.title": {
+    ko: "Solana Explorer에서 온체인 지급 확인",
+    en: "View the on-chain payout on Solana Explorer",
+  },
   "me.wallet.title": { ko: "수취 지갑", en: "Payout wallets" },
   "me.wallet.desc": {
     ko: "지급받을 Solana 지갑입니다. 기본 지갑 하나만 활성화됩니다.",
@@ -242,6 +262,15 @@ const dict: Record<string, { ko: string; en: string }> = {
   "verify.bestGrade": { ko: "최고 증거 등급", en: "Best evidence grade" },
   "verify.corrections": { ko: "정정 이력", en: "Corrections" },
   "verify.posShare": { ko: "POS 연동 증거 비율", en: "POS-verified evidence" },
+  "dash.todo.title": { ko: "오늘 할 일", en: "Needs attention" },
+  "dash.todo.desc": {
+    ko: "이 사업장에서 매니저 처리가 필요한 항목입니다.",
+    en: "Items in this venue that still need a manager.",
+  },
+  "dash.todo.unmapped": { ko: "미매핑 워커", en: "Unmapped workers" },
+  "dash.todo.uncalculated": { ko: "미계산 영업일", en: "Uncalculated dates" },
+  "dash.todo.approval": { ko: "승인 대기 배치", en: "Batches awaiting approval" },
+  "dash.todo.unpaid": { ko: "미지급 배분", en: "Unpaid allocations" },
   "verify.yes": { ko: "있음", en: "Yes" },
   "verify.no": { ko: "없음", en: "No" },
   "verify.footer": {

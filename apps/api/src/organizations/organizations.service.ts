@@ -77,6 +77,48 @@ export class OrganizationsService {
     return venue;
   }
 
+  /** GET /venues/:id/action-items — the manager's "what needs me today" inbox. */
+  async actionItems(venueId: string) {
+    const [unmappedShiftWorkers, batches, evidenceDates, unpaidAllocations] = await Promise.all([
+      this.prisma.shiftEvidence.findMany({
+        where: { venueId, mappedWorkerId: null },
+        distinct: ["provider", "externalWorkerId"],
+        select: { externalWorkerId: true },
+      }),
+      this.prisma.allocationBatch.findMany({
+        where: { venueId },
+        select: { businessDate: true, status: true },
+      }),
+      this.prisma.shiftEvidence.findMany({
+        where: { venueId },
+        distinct: ["businessDate"],
+        select: { businessDate: true },
+      }),
+      this.prisma.workerAllocation.findMany({
+        where: {
+          payoutStatus: "UNPAID",
+          batch: { venueId, status: { in: ["PAYABLE", "PARTIALLY_PAID"] } },
+        },
+        select: { netAllocatedUsdCents: true },
+      }),
+    ]);
+    const batchDates = new Set(batches.map((b) => b.businessDate));
+    const uncalculatedDates = evidenceDates
+      .map((e) => e.businessDate)
+      .filter((d) => !batchDates.has(d))
+      .sort()
+      .reverse();
+    return {
+      unmappedWorkerCount: unmappedShiftWorkers.length,
+      uncalculatedDates,
+      awaitingApprovalCount: batches.filter((b) =>
+        ["CALCULATED", "REVIEW_REQUIRED"].includes(b.status),
+      ).length,
+      unpaidAllocationCount: unpaidAllocations.length,
+      unpaidTotalUsdCents: unpaidAllocations.reduce((s, a) => s + a.netAllocatedUsdCents, 0),
+    };
+  }
+
   /** Spec §22 — POST /venues/:id/wallet (payout signer wallet, §9.3) */
   setVenueWallet(venueId: string, payoutSignerWallet: string) {
     return this.prisma.venue.update({
