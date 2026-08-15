@@ -2,4 +2,4 @@ provider,venue_external_id,worker_external_id,shift_external_id,tip_type,gross_t
 toast_mock,venue_smoke,smoke.a,d4_s1,CARD_TIP,150.00,2026-08-15T17:00:00Z,2026-08-15T22:00:00Z,SERVER,PAYROLL,PROVIDER_CONFIRMED
 toast_mock,venue_smoke,smoke.b,d4_s2,CARD_TIP,88.00,2026-08-15T17:30:00Z,2026-08-15T23:00:00Z,SERVER,USDC,PENDING
 toast_mock,venue_smoke,demo.b,d4_s3,CARD_TIP,64.50,2026-08-15T18:00:00Z,2026-08-15T23:30:00Z,SERVER,USDC,PENDING
-toast_mock,venue_smoke,demo.b,d4_s4,CASH_TIP,25.00,2026-08-15T18:00:00Z,2026-08-15T23:30:00Z,SERVER,USDC,PENDING
+toast_mock,venue_smoke,demo.b,d4_s3,CASH_TIP,25.00,2026-08-15T18:00:00Z,2026-08-15T23:30:00Z,SERVER,USDC,PENDING

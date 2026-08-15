@@ -5,12 +5,17 @@ import { CurrentUser, type AuthenticatedUser } from "../auth/current-user.decora
 import { parseBody } from "../common/zod";
 import { MappingsService } from "./mappings.service";
 
-const createMappingSchema = z.object({
-  workerId: z.uuid(),
-  venueId: z.uuid(),
-  provider: z.string().min(1),
-  externalWorkerId: z.string().min(1),
-});
+const createMappingSchema = z
+  .object({
+    workerId: z.uuid().optional(),
+    workerEmail: z.email().optional(),
+    venueId: z.uuid(),
+    provider: z.string().min(1),
+    externalWorkerId: z.string().min(1),
+  })
+  .refine((v) => v.workerId || v.workerEmail, {
+    message: "workerId or workerEmail is required",
+  });
 
 @Controller()
 export class MappingsController {

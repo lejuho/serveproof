@@ -23,15 +23,32 @@ export class MappingsService {
     return { unmappedShiftWorkers: shifts, pendingMappings: pending };
   }
 
-  /** Spec §22 — POST /worker-mappings */
+  /**
+   * Spec §22 — POST /worker-mappings. The worker can be referenced by id or,
+   * like org member invites, by account email (they must have logged in once).
+   */
   async createMapping(input: {
-    workerId: string;
+    workerId?: string;
+    workerEmail?: string;
     venueId: string;
     provider: string;
     externalWorkerId: string;
   }) {
-    const worker = await this.prisma.worker.findUnique({ where: { id: input.workerId } });
-    if (!worker) throw new NotFoundException(`Worker ${input.workerId} not found`);
+    let workerId = input.workerId;
+    if (!workerId) {
+      const user = await this.prisma.user.findUnique({
+        where: { email: (input.workerEmail ?? "").toLowerCase() },
+        include: { worker: true },
+      });
+      if (!user?.worker) {
+        throw new NotFoundException(
+          `No worker account for ${input.workerEmail}; they must log in once first`,
+        );
+      }
+      workerId = user.worker.id;
+    }
+    const worker = await this.prisma.worker.findUnique({ where: { id: workerId } });
+    if (!worker) throw new NotFoundException(`Worker ${workerId} not found`);
 
     return this.prisma.externalWorkerAccount.upsert({
       where: {
@@ -41,8 +58,14 @@ export class MappingsService {
           externalWorkerId: input.externalWorkerId,
         },
       },
-      update: { workerId: input.workerId, mappingStatus: "PENDING" },
-      create: { ...input, mappingStatus: "PENDING" },
+      update: { workerId, mappingStatus: "PENDING" },
+      create: {
+        workerId,
+        venueId: input.venueId,
+        provider: input.provider,
+        externalWorkerId: input.externalWorkerId,
+        mappingStatus: "PENDING",
+      },
     });
   }
 
