@@ -339,9 +339,10 @@ export default function DashboardPage() {
                   .map((b) => b.businessDate)
                   .join(", "),
                 urgent: actionItems.awaitingApprovalCount > 0,
-                action: actionItems.awaitingApproval?.length
-                  ? () => openBatch(actionItems.awaitingApproval![0])
-                  : undefined,
+                action: (() => {
+                  const target = actionItems.awaitingApproval?.[0];
+                  return target ? () => openBatch(target) : undefined;
+                })(),
                 cta: t("dash.todo.cta.review"),
               },
               {
@@ -352,9 +353,10 @@ export default function DashboardPage() {
                     ? usd(actionItems.unpaidTotalUsdCents)
                     : undefined,
                 urgent: actionItems.unpaidAllocationCount > 0,
-                action: actionItems.unpaidBatches?.length
-                  ? () => openBatch(actionItems.unpaidBatches![0])
-                  : undefined,
+                action: (() => {
+                  const target = actionItems.unpaidBatches?.[0];
+                  return target ? () => openBatch(target) : undefined;
+                })(),
                 cta: t("dash.todo.cta.pay"),
               },
             ].map((item) => (
