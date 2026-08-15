@@ -13,6 +13,9 @@ import * as QRCode from "qrcode";
 import { PrismaService } from "../prisma/prisma.service";
 
 const sha256Hex = (s: string) => createHash("sha256").update(s).digest("hex");
+const REPORT_FONT_NAME = "NotoSansKR";
+const REPORT_FONT_PATH =
+  require.resolve("@fontsource/noto-sans-kr/files/noto-sans-kr-korean-400-normal.woff2");
 
 // Local stand-in for the private object storage bucket (spec §29.8) —
 // swapped for S3-compatible storage + signed URLs in staging.
@@ -280,6 +283,13 @@ export class DisclosureService {
     doc.on("data", (c: Buffer) => chunks.push(c));
     const done = new Promise<void>((resolve) => doc.on("end", () => resolve()));
 
+    // PDFKit's built-in Helvetica font only supports WinAnsi. Dynamic fields
+    // such as a Korean disclosure purpose are otherwise encoded as mojibake.
+    // Resolve the bundled font through Node so this also works from dist/ in
+    // the Railway image instead of depending on host-installed system fonts.
+    doc.registerFont(REPORT_FONT_NAME, REPORT_FONT_PATH);
+    doc.font(REPORT_FONT_NAME);
+
     doc.fontSize(20).text("ServeProof Income Verification Report");
     doc.moveDown(0.3);
     doc
@@ -319,8 +329,9 @@ export class DisclosureService {
       if (s.monthlyBreakdown && typeof s.monthlyBreakdown === "object") {
         doc.moveDown(0.3);
         doc.text("Monthly breakdown (observed, not extrapolated):");
-        for (const [month, cents] of Object.entries(s.monthlyBreakdown as Record<string, number>)
-          .sort()) {
+        for (const [month, cents] of Object.entries(
+          s.monthlyBreakdown as Record<string, number>,
+        ).sort()) {
           doc.text(`  ${month}: ${usd(cents)}`);
         }
       }

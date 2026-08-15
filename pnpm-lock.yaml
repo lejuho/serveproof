@@ -14,6 +14,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fontsource/noto-sans-kr':
+        specifier: 5.3.0
+        version: 5.3.0
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -502,6 +505,9 @@ packages:
 
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
+
+  '@fontsource/noto-sans-kr@5.3.0':
+    resolution: {integrity: sha512-/JnpTjaCOXW7xUoqOyCVYSr05VOkDy5Yla9O+WAEiS7u+yYLsmHoqj6v1W0bf91G8G3XA2+NnRS3CX2Tf/FVZg==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -4279,6 +4285,8 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@fontsource/noto-sans-kr@5.3.0': {}
 
   '@img/colour@1.1.0':
     optional: true
