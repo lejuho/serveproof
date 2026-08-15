@@ -145,6 +145,14 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                     </dd>
                     <dt className="text-zinc-400">{t("verify.corrections")}</dt>
                     <dd>{disclosed.hasCorrections ? t("verify.yes") : t("verify.no")}</dd>
+                    {typeof disclosed.posVerifiedSharePct === "number" && (
+                      <>
+                        <dt className="text-zinc-400">{t("verify.posShare")}</dt>
+                        <dd className="font-semibold text-emerald-700">
+                          {String(disclosed.posVerifiedSharePct)}%
+                        </dd>
+                      </>
+                    )}
                   </dl>
                 )}
                 {Array.isArray(disclosed.entries) && (

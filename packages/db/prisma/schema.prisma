@@ -253,9 +253,17 @@ enum RefundStatus {
   FULL
 }
 
+// How a piece of evidence entered the system — a third-party provider API
+// (venue cannot edit it after the fact) vs a self-reported CSV upload.
+enum EvidenceIngestSource {
+  CSV_UPLOAD
+  PROVIDER_API
+}
+
 model TipEvidence {
   id                String        @id @default(uuid())
   provider          String
+  ingestSource      EvidenceIngestSource @default(CSV_UPLOAD)
   venueId           String
   externalPaymentId String
   externalOrderId   String?
@@ -284,6 +292,7 @@ enum ShiftStatus {
 model ShiftEvidence {
   id               String      @id @default(uuid())
   provider         String
+  ingestSource     EvidenceIngestSource @default(CSV_UPLOAD)
   venueId          String
   externalShiftId  String
   externalWorkerId String

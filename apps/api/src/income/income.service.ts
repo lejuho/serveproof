@@ -229,7 +229,16 @@ export class IncomeService {
     const entries = await this.prisma.incomeEntry.findMany({
       where: { workerId: worker.id, effectiveStatus: "ACTIVE" },
       include: {
-        shift: { select: { businessDate: true, role: true, clockIn: true, clockOut: true } },
+        shift: {
+          select: {
+            businessDate: true,
+            role: true,
+            clockIn: true,
+            clockOut: true,
+            provider: true,
+            ingestSource: true,
+          },
+        },
         venue: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -239,6 +248,8 @@ export class IncomeService {
       venue: e.venue,
       businessDate: e.shift?.businessDate ?? null,
       role: e.shift?.role ?? null,
+      evidenceProvider: e.shift?.provider ?? null,
+      ingestSource: e.shift?.ingestSource ?? null,
       earnedUsdCents: e.earnedUsdCents,
       allocatedUsdCents: e.allocatedUsdCents,
       paidUsdCents: e.paidUsdCents,
@@ -256,7 +267,7 @@ export class IncomeService {
     const worker = await this.workerOf(userId);
     const entries = await this.prisma.incomeEntry.findMany({
       where: { workerId: worker.id, effectiveStatus: "ACTIVE" },
-      include: { shift: { select: { businessDate: true } } },
+      include: { shift: { select: { businessDate: true, ingestSource: true } } },
     });
     const totals = entries.reduce(
       (acc, e) => ({
@@ -271,6 +282,9 @@ export class IncomeService {
     const payers = new Set(entries.map((e) => e.venueId));
     const gradeCounts: Record<string, number> = {};
     for (const e of entries) gradeCounts[e.evidenceGrade] = (gradeCounts[e.evidenceGrade] ?? 0) + 1;
+    const providerVerifiedShiftCount = entries.filter(
+      (e) => e.shift?.ingestSource === "PROVIDER_API",
+    ).length;
 
     return {
       totals,
@@ -280,6 +294,8 @@ export class IncomeService {
         months.size > 0 ? Math.round(totals.allocatedUsdCents / months.size) : 0,
       payerCount: payers.size,
       gradeCounts,
+      // shifts whose evidence came from a third-party provider API (not self-reported)
+      providerVerifiedShiftCount,
     };
   }
 

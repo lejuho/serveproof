@@ -40,8 +40,22 @@ interface TimelineEntry {
   withholdingStatus: "UNKNOWN" | "PENDING" | "CONFIRMED";
   payoutRail: string | null;
   evidenceGrade: string;
+  ingestSource: "CSV_UPLOAD" | "PROVIDER_API" | null;
   isCorrection: boolean;
   correctionReason: string | null;
+}
+
+function SourceBadge({ ingestSource, t }: { ingestSource: string | null; t: (k: string) => string }) {
+  const pos = ingestSource === "PROVIDER_API";
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+        pos ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
+      }`}
+    >
+      {pos ? t("me.source.pos") : t("me.source.self")}
+    </span>
+  );
 }
 interface Summary {
   totals: {
@@ -255,6 +269,7 @@ export default function MyIncomePage() {
                 <th className={`${tableHeadClass} text-right`}>{t("me.col.payroll")}</th>
                 <th className={tableHeadClass}>{t("me.col.withholding")}</th>
                 <th className={tableHeadClass}>{t("me.col.rail")}</th>
+                <th className={tableHeadClass}>{t("me.col.source")}</th>
                 <th className={tableHeadClass}>{t("me.col.grade")}</th>
               </tr>
             </thead>
@@ -287,6 +302,9 @@ export default function MyIncomePage() {
                   </td>
                   <td className={`${tableCellClass} text-sm text-zinc-500`}>
                     {entry.payoutRail ?? "—"}
+                  </td>
+                  <td className={tableCellClass}>
+                    <SourceBadge ingestSource={entry.ingestSource} t={t} />
                   </td>
                   <td className={tableCellClass}>
                     <Badge tone={entry.evidenceGrade}>{entry.evidenceGrade}</Badge>

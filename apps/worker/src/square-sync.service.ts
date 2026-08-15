@@ -113,9 +113,10 @@ export class SquareSyncService {
           refundStatus: tip.refundStatus,
           businessDate: tip.businessDate,
           sourceHash: tip.sourceHash,
+          ingestSource: "PROVIDER_API" as const,
           observedAt: new Date(),
         },
-        create: { venueId, ...tip },
+        create: { venueId, ...tip, ingestSource: "PROVIDER_API" as const },
       });
     }
 
@@ -131,8 +132,8 @@ export class SquareSyncService {
             externalShiftId: shift.externalShiftId,
           },
         },
-        update: { ...shift, mappedWorkerId, observedAt: new Date() },
-        create: { venueId, ...shift, mappedWorkerId },
+        update: { ...shift, mappedWorkerId, ingestSource: "PROVIDER_API" as const, observedAt: new Date() },
+        create: { venueId, ...shift, mappedWorkerId, ingestSource: "PROVIDER_API" as const },
       });
     }
     return {

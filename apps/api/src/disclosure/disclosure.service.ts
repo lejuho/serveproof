@@ -114,7 +114,7 @@ export class DisclosureService {
     const entries = await this.prisma.incomeEntry.findMany({
       where: { workerId: grant.workerId, effectiveStatus: "ACTIVE" },
       include: {
-        shift: { select: { businessDate: true, role: true } },
+        shift: { select: { businessDate: true, role: true, ingestSource: true } },
         venue: { select: { name: true } },
       },
     });
@@ -134,6 +134,16 @@ export class DisclosureService {
     for (const e of inRange) grades[e.evidenceGrade] = (grades[e.evidenceGrade] ?? 0) + 1;
     const bestGrade = ["A", "B", "C", "D", "E"].find((g) => grades[g]) ?? "E";
     const hasCorrections = inRange.some((e) => e.correctionOfId !== null);
+    // share of shifts whose evidence came straight from a POS/provider API,
+    // i.e. not self-reported by the venue — a verifier-facing trust signal
+    const posVerifiedSharePct =
+      inRange.length > 0
+        ? Math.round(
+            (inRange.filter((e) => e.shift?.ingestSource === "PROVIDER_API").length /
+              inRange.length) *
+              100,
+          )
+        : 0;
 
     // LEVEL_1 — only the boolean criterion result (spec §20.2)
     if (grant.level === "LEVEL_1") {
@@ -156,6 +166,7 @@ export class DisclosureService {
       hasCorrections,
       totalVerifiedIncomeUsdCents: totalAllocated,
       totalPaidUsdCents: totalPaid,
+      posVerifiedSharePct,
     };
     if (grant.level === "LEVEL_2") return level2;
 
@@ -172,6 +183,7 @@ export class DisclosureService {
         withholdingStatus: e.withholdingStatus,
         payoutRail: e.payoutRail,
         evidenceGrade: e.evidenceGrade,
+        ingestSource: e.shift?.ingestSource ?? null,
         corrected: e.correctionOfId !== null,
       })),
     };
@@ -285,6 +297,9 @@ export class DisclosureService {
       doc.text(`Months covered: ${s.monthsCovered}  ·  Payer count: ${s.payerCount}`);
       doc.text(`Best evidence grade: ${s.bestGrade}`);
       doc.text(`Corrections present: ${s.hasCorrections ? "yes" : "no"}`);
+      if (typeof s.posVerifiedSharePct === "number") {
+        doc.text(`POS-verified evidence share: ${s.posVerifiedSharePct}%`);
+      }
       if (Array.isArray(s.entries)) {
         doc.moveDown(0.5);
         doc.text("Shift detail:", { underline: true });

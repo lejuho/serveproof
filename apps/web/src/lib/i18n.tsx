@@ -158,6 +158,9 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.col.payroll": { ko: "Payroll 신고", en: "Payroll" },
   "me.col.withholding": { ko: "원천징수", en: "Withholding" },
   "me.col.rail": { ko: "경로", en: "Rail" },
+  "me.col.source": { ko: "출처", en: "Source" },
+  "me.source.pos": { ko: "POS 연동", en: "POS-verified" },
+  "me.source.self": { ko: "자기신고", en: "Self-reported" },
   "me.col.grade": { ko: "등급", en: "Grade" },
   "me.corrected": { ko: "정정", en: "Corrected" },
   "me.share.title": { ko: "소득증명 공유", en: "Share income proof" },
@@ -238,6 +241,7 @@ const dict: Record<string, { ko: string; en: string }> = {
   "verify.payers": { ko: "Payer 수", en: "Payer count" },
   "verify.bestGrade": { ko: "최고 증거 등급", en: "Best evidence grade" },
   "verify.corrections": { ko: "정정 이력", en: "Corrections" },
+  "verify.posShare": { ko: "POS 연동 증거 비율", en: "POS-verified evidence" },
   "verify.yes": { ko: "있음", en: "Yes" },
   "verify.no": { ko: "없음", en: "No" },
   "verify.footer": {
