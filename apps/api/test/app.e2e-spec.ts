@@ -43,6 +43,11 @@ describe("ServeProof API integration", () => {
 
   const api = () => request(app.getHttpServer());
   const bearer = (session: Session) => ({ Authorization: `Bearer ${session.accessToken}` });
+  const accessClaims = (session: Session) =>
+    JSON.parse(Buffer.from(session.accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      sub: string;
+      modes: string[];
+    };
 
   async function login(label: string): Promise<Session> {
     const email = `${label}-${runId}@example.test`;
@@ -56,7 +61,9 @@ describe("ServeProof API integration", () => {
       .expect(201);
     expect(verified.body.accessToken).toEqual(expect.any(String));
     expect(verified.body.refreshToken).toEqual(expect.any(String));
-    return verified.body as Session;
+    const session = verified.body as Session;
+    expect(accessClaims(session).modes).toEqual(["worker"]);
+    return session;
   }
 
   beforeAll(async () => {
@@ -80,18 +87,27 @@ describe("ServeProof API integration", () => {
       });
     await api().get("/organizations/mine").expect(401);
     await api().get("/organizations/mine").set("Authorization", "Bearer forged-token").expect(401);
+    await api().get("/auth/session").expect(401);
   });
 
-  it("rotates refresh tokens and rejects reuse", async () => {
+  it("rotates refresh tokens and atomically rejects concurrent reuse", async () => {
     const session = await login("refresh");
-    const rotated = await api()
-      .post("/auth/refresh")
-      .send({ refreshToken: session.refreshToken })
-      .expect(201);
+    const attempts = await Promise.all([
+      api().post("/auth/refresh").send({ refreshToken: session.refreshToken }),
+      api().post("/auth/refresh").send({ refreshToken: session.refreshToken }),
+    ]);
+    expect(attempts.map((response) => response.status).sort()).toEqual([201, 401]);
 
+    const rotated = attempts.find((response) => response.status === 201)!;
     expect(rotated.body.accessToken).toEqual(expect.any(String));
     expect(rotated.body.refreshToken).not.toBe(session.refreshToken);
     await api().post("/auth/refresh").send({ refreshToken: session.refreshToken }).expect(401);
+
+    await api()
+      .post("/auth/logout")
+      .send({ refreshToken: rotated.body.refreshToken })
+      .expect(201, { revoked: true });
+    await api().post("/auth/refresh").send({ refreshToken: rotated.body.refreshToken }).expect(401);
   });
 
   it("enforces RBAC, tenant isolation, and allocation state transitions", async () => {
@@ -126,6 +142,20 @@ describe("ServeProof API integration", () => {
         .send({ email: `${member.label}-${runId}@example.test`, role: member.role })
         .expect(201);
     }
+
+    const managerRefreshed = await api()
+      .post("/auth/refresh")
+      .send({ refreshToken: manager.refreshToken })
+      .expect(201);
+    manager.accessToken = managerRefreshed.body.accessToken;
+    manager.refreshToken = managerRefreshed.body.refreshToken;
+    expect(accessClaims(manager).modes).toEqual(["worker", "staff"]);
+    await api().get("/workers/me").set(bearer(manager)).expect(200);
+    await api()
+      .get("/auth/session")
+      .set(bearer(manager))
+      .expect(200)
+      .expect(({ body }) => expect(body.modes).toEqual(["worker", "staff"]));
 
     const venue = await api()
       .post("/venues")

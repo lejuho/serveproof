@@ -26,6 +26,8 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+type AppMode = "worker" | "staff";
+
 @Injectable()
 export class AuthService implements OnApplicationShutdown {
   private readonly logger = new Logger(AuthService.name);
@@ -121,15 +123,6 @@ export class AuthService implements OnApplicationShutdown {
         },
       });
     }
-    // Workers get a Worker profile on first login (spec §4.2 internal structure)
-    if (user.role === "WORKER") {
-      await this.prisma.worker.upsert({
-        where: { userId: user.id },
-        update: {},
-        create: { userId: user.id },
-      });
-    }
-
     const tokens = await this.issueTokens(user.id, user.email, user.role);
     return { ...tokens, userId: user.id };
   }
@@ -145,11 +138,13 @@ export class AuthService implements OnApplicationShutdown {
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
       throw new UnauthorizedException("Invalid refresh token");
     }
-    // Rotation: the presented token is single-use.
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
+    // Rotation: atomically claim the presented token so concurrent requests
+    // cannot both pass the read-before-write window and mint two token pairs.
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { id: stored.id, revokedAt: null, expiresAt: { gte: new Date() } },
       data: { revokedAt: new Date() },
     });
+    if (claimed.count !== 1) throw new UnauthorizedException("Invalid refresh token");
     return this.issueTokens(stored.user.id, stored.user.email, stored.user.role);
   }
 
@@ -161,9 +156,44 @@ export class AuthService implements OnApplicationShutdown {
     return { revoked: result.count > 0 };
   }
 
+  async getSession(userId: string): Promise<{ userId: string; email: string; modes: AppMode[] }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        worker: { select: { id: true } },
+        memberships: { select: { id: true }, take: 1 },
+      },
+    });
+    if (!user) throw new UnauthorizedException("User no longer exists");
+    const modes: AppMode[] = [];
+    if (user.worker) modes.push("worker");
+    if (user.memberships.length) modes.push("staff");
+    return { userId, email: user.email, modes };
+  }
+
   private async issueTokens(userId: string, email: string, role: string): Promise<TokenPair> {
+    // An account represents a person, not a mutually exclusive app role.
+    // Backfill older staff-only records as their sessions refresh so every
+    // person can use their own worker view without a separate account.
+    await this.prisma.worker.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+    });
+    const userCapabilities = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        worker: { select: { id: true } },
+        memberships: { select: { id: true }, take: 1 },
+      },
+    });
+    const modes: AppMode[] = [];
+    if (userCapabilities?.worker) modes.push("worker");
+    if (userCapabilities?.memberships.length) modes.push("staff");
+
     const accessToken = await this.jwt.signAsync(
-      { sub: userId, email, role, typ: "access" },
+      { sub: userId, email, role, modes, typ: "access" },
       { expiresIn: ACCESS_TOKEN_TTL },
     );
     const refreshToken = randomBytes(32).toString("hex");

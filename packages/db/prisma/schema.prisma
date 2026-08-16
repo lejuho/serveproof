@@ -35,6 +35,8 @@ model User {
   authUserId  String     @unique
   email       String     @unique
   displayName String
+  // Legacy default-view hint only. Authorization comes from Worker presence
+  // and organization-scoped memberships, which can coexist for one person.
   role        GlobalRole @default(WORKER)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt

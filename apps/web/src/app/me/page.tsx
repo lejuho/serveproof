@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as QRCode from "qrcode";
-import { api, ApiError, clearTokens, getToken } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  getCurrentSession,
+  getToken,
+  logoutSession,
+  syncCurrentSession,
+  switchAppMode,
+  type AppMode,
+} from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { connectWallet } from "@/lib/wallet";
 import {
@@ -141,12 +150,12 @@ export default function MyIncomePage() {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   const purpose = customPurpose ?? t(purposeKey);
 
   const guard = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.status === 401) {
-        clearTokens();
         router.push("/login");
         return;
       }
@@ -160,6 +169,8 @@ export default function MyIncomePage() {
       router.push("/login");
       return;
     }
+    setAvailableModes(getCurrentSession()?.modes ?? []);
+    void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
     Promise.all([
       api<Me>("/workers/me"),
       api<TimelineEntry[]>("/workers/me/income-timeline"),
@@ -169,6 +180,7 @@ export default function MyIncomePage() {
       api<VenueConnection[]>("/workers/me/venue-connections"),
     ])
       .then(([meData, timelineData, summaryData, alertData, grantData, connectionData]) => {
+        setAvailableModes(getCurrentSession()?.modes ?? []);
         setMe(meData);
         setTimeline(timelineData);
         setSummary(summaryData);
@@ -411,15 +423,35 @@ export default function MyIncomePage() {
       title={t("me.title")}
       subtitle={me ? `${me.user.displayName} · ${maskEmail(me.user.email)}` : undefined}
       right={
-        <button
-          onClick={() => {
-            clearTokens();
-            router.push("/login");
-          }}
-          className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
-        >
-          {t("logout")}
-        </button>
+        <span className="flex items-center gap-3">
+          {availableModes.includes("staff") && (
+            <button
+              type="button"
+              onClick={() => {
+                const destination = switchAppMode("staff");
+                if (destination) router.push(destination);
+              }}
+              className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+            >
+              {t("auth.viewAsStaff")}
+            </button>
+          )}
+          <a
+            href="/login?switch=1"
+            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+          >
+            {t("auth.switch")}
+          </a>
+          <button
+            onClick={async () => {
+              await logoutSession();
+              router.push("/login?switch=1");
+            }}
+            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+          >
+            {t("logout")}
+          </button>
+        </span>
       }
     >
       {error && <Callout tone="red">{error}</Callout>}

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, clearTokens, getToken } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  getCurrentSession,
+  getToken,
+  logoutSession,
+  syncCurrentSession,
+  switchAppMode,
+  type AppMode,
+} from "@/lib/api";
 import { connectWallet, signTransactionBase64 } from "@/lib/wallet";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -172,6 +181,7 @@ export default function DashboardPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   // React state does not update synchronously, so `busy` alone cannot stop two
   // clicks in the same render frame from opening parallel wallet-sign flows.
   const payoutLocks = useRef(new Set<string>());
@@ -179,7 +189,6 @@ export default function DashboardPage() {
   const guard = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.status === 401) {
-        clearTokens();
         router.push("/login");
         return;
       }
@@ -193,8 +202,11 @@ export default function DashboardPage() {
       router.push("/login");
       return;
     }
+    setAvailableModes(getCurrentSession()?.modes ?? []);
+    void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
     api<Organization[]>("/organizations/mine")
       .then((data) => {
+        setAvailableModes(getCurrentSession()?.modes ?? []);
         setOrgs(data);
         const firstVenue = data.flatMap((o) => o.venues)[0];
         if (firstVenue) setVenueId(firstVenue.id);
@@ -460,10 +472,28 @@ export default function DashboardPage() {
               )),
             )}
           </select>
+          {availableModes.includes("worker") && (
+            <button
+              type="button"
+              onClick={() => {
+                const destination = switchAppMode("worker");
+                if (destination) router.push(destination);
+              }}
+              className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+            >
+              {t("auth.viewAsWorker")}
+            </button>
+          )}
+          <a
+            href="/login?switch=1"
+            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+          >
+            {t("auth.switch")}
+          </a>
           <button
-            onClick={() => {
-              clearTokens();
-              router.push("/login");
+            onClick={async () => {
+              await logoutSession();
+              router.push("/login?switch=1");
             }}
             className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
           >

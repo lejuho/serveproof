@@ -57,6 +57,15 @@ const dict: Record<string, { ko: string; en: string }> = {
   "login.submit": { ko: "로그인", en: "Sign in" },
   "login.back": { ko: "이메일 다시 입력", en: "Use a different email" },
   "login.demo": { ko: "데모 계정", en: "Demo accounts" },
+  "login.savedAccounts": { ko: "저장된 계정", en: "Saved accounts" },
+  "login.savedAccount": { ko: "저장된 계정", en: "Saved account" },
+  "login.workerAccount": { ko: "노동자 화면", en: "Worker view" },
+  "login.staffAccount": { ko: "사업장 관리", en: "Venue management" },
+  "login.continue": { ko: "계속", en: "Continue" },
+  "auth.restoring": { ko: "로그인 상태를 확인하고 있습니다…", en: "Restoring your session…" },
+  "auth.switch": { ko: "계정 전환", en: "Switch account" },
+  "auth.viewAsWorker": { ko: "노동자로 보기", en: "Worker view" },
+  "auth.viewAsStaff": { ko: "사업장 관리자로 보기", en: "Venue manager view" },
 
   // dashboard
   "dash.subtitle": {

@@ -1,10 +1,35 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LanguageToggle, Logo } from "@/components/ui";
+import { restoreSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 export default function Home() {
   const { locale, t } = useI18n();
+  const router = useRouter();
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    restoreSession().then((destination) => {
+      if (!active) return;
+      if (destination) router.replace(destination);
+      else setCheckingSession(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-50 text-sm text-zinc-500">
+        {t("auth.restoring")}
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col bg-zinc-50">

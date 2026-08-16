@@ -4,6 +4,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   role: string;
+  modes: Array<"worker" | "staff">;
 }
 
 export const CurrentUser = createParamDecorator(

@@ -35,6 +35,11 @@ async function main() {
     "Demo Manager",
     "VENUE_MANAGER",
   );
+  await prisma.worker.upsert({
+    where: { userId: manager.id },
+    update: {},
+    create: { userId: manager.id },
+  });
 
   let org = await prisma.organization.findFirst({
     where: { legalName: "ServeProof Demo LLC" },
