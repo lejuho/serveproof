@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Design Improvement: 소득증명 공유</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #18181b;
+        --muted: #71717a;
+        --line: #e4e4e7;
+        --green: #059669;
+        --soft: #ecfdf5;
+        --blue: #eff6ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fafafa;
+        color: var(--ink);
+        font:
+          15px/1.65 system-ui,
+          -apple-system,
+          "Noto Sans KR",
+          sans-serif;
+      }
+      main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 56px 24px 88px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.25;
+        letter-spacing: -0.03em;
+      }
+      h2 {
+        margin: 48px 0 16px;
+        font-size: 23px;
+        letter-spacing: -0.02em;
+      }
+      h3 {
+        margin: 40px 0 12px;
+        font-size: 19px;
+      }
+      p {
+        margin: 8px 0;
+        color: #3f3f46;
+      }
+      .eyebrow {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .tldr {
+        margin-top: 24px;
+        padding: 20px 22px;
+        border: 1px solid #bfdbfe;
+        border-radius: 16px;
+        background: var(--blue);
+      }
+      .tldr strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #1d4ed8;
+      }
+      img {
+        display: block;
+        width: 100%;
+        margin: 16px 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 6px 24px rgba(24, 24, 27, 0.07);
+      }
+      figure {
+        margin: 20px 0;
+      }
+      figcaption {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .idea {
+        margin-top: 24px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fff;
+      }
+      .idea h3 {
+        margin: 0 0 10px;
+      }
+      .impact {
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .why {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-left: 3px solid var(--green);
+        background: var(--soft);
+      }
+      pre {
+        overflow: auto;
+        margin: 16px 0 0;
+        padding: 16px;
+        border-radius: 12px;
+        background: #18181b;
+        color: #f4f4f5;
+        font:
+          13px/1.5 ui-monospace,
+          SFMono-Regular,
+          monospace;
+      }
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .gallery figure {
+        margin: 0;
+      }
+      .gallery img {
+        height: 260px;
+        object-fit: contain;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      a {
+        color: #047857;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      @media (max-width: 640px) {
+        main {
+          padding: 32px 16px 64px;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+        .idea {
+          padding: 19px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Design improvement</div>
+      <h1>소득증명 공유 UX</h1>
+      <section class="tldr">
+        <strong>TL;DR</strong>
+        한 줄짜리 설정 폼을 “용도 → 공개 범위 → 기간·수신자 → 공유 전 확인”으로 바꿨다. 사용자는
+        LEVEL 번호를 해석하지 않아도 실제 노출 정보를 이해하고, 최소 공개 원칙과 만료·철회를 발급
+        전에 확인할 수 있다.
+      </section>
+
+      <h2>Current State</h2>
+      <figure>
+        <img src="references/current.png" alt="기존 소득증명 공유 폼" />
+        <figcaption>
+          기존 화면 — 프리셋·목적·LEVEL·이메일·CTA가 같은 위계에 있어 선택의 의미와 결과를 예측하기
+          어렵다.
+        </figcaption>
+      </figure>
+
+      <h2>Improvement Ideas</h2>
+      <article class="idea">
+        <div class="impact">⭐ HIGHEST IMPACT</div>
+        <h3>1. LEVEL을 데이터 공개 범위로 번역</h3>
+        <p>
+          LEVEL 1/2/3을 라디오 카드로 바꾸고, 각 카드에 “무엇을 공개하고 무엇을 숨기는지”를
+          명시한다. 기술 등급은 내부 값으로 유지하되 사용자에게는 충족 여부·소득 요약·시프트 상세로
+          보여준다.
+        </p>
+        <figure>
+          <img src="references/zoho-sharing.png" alt="Zoho 공유 설정 참고 화면" />
+          <figcaption>
+            Zoho — 설정마다 설명을 붙여 외부 공유와 다운로드의 영향을 구분한다. [Lazyweb]
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 민감한 금융 데이터 공유에서는 옵션 이름보다 결과가
+          중요하다. 공개·비공개 항목을 같은 자리에서 설명하면 최소 범위를 고르기 쉬워진다.
+        </div>
+        <pre>
+┌ 공개 범위 ─────────────────────────┐
+│ ○ 충족 여부만   금액·근무내역 숨김 │
+│ ● 소득 요약     시프트 상세 숨김   │
+│ ○ 시프트 상세   날짜·사업장 포함   │
+└────────────────────────────────────┘</pre>
+      </article>
+
+      <article class="idea">
+        <h3>2. 목적 프리셋을 추천 시작점으로 사용</h3>
+        <p>
+          렌트·대출·세무를 바로 보이는 카드로 제공하고, 선택 시 공개 목적과 최소 권장 범위를 함께
+          채운다. 사용자는 프리셋을 쓴 뒤 목적 문구나 범위를 자유롭게 조정할 수 있다.
+        </p>
+        <figure>
+          <img src="references/docusign-sharing.png" alt="DocuSign 고급 공유 옵션 참고 화면" />
+          <figcaption>
+            DocuSign — 수신자 권한과 만료를 작업 맥락 안에서 구체적인 옵션으로 분리한다. [Lazyweb]
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 프리셋은 선택 수를 줄이되 사용자의 통제권을 없애지
+          않는다. 렌트 심사에서 불필요한 시프트 상세를 보내는 실수도 예방한다.
+        </div>
+        <pre>
+어디에 제출하나요?
+[집주인·렌트] [대출 심사] [세무 신고]
+공개 목적  [임대 계약 소득증명        ]</pre>
+      </article>
+
+      <article class="idea">
+        <h3>3. 기간·만료·수신자를 한 묶음으로 명시</h3>
+        <p>
+          고정된 최근 3개월·7일 만료를 화면에 드러내고 선택 가능하게 했다. 수신자 이메일을 비우면
+          이메일 없이 링크만 생성된다는 보조 문구와 이메일 형식 오류도 즉시 제공한다.
+        </p>
+        <figure>
+          <img src="references/clickup-sharing.png" alt="ClickUp 링크 만료 설정 참고 화면" />
+          <figcaption>
+            ClickUp — 링크 공유 상태와 만료 옵션을 같은 설정 영역에서 다룬다. [Lazyweb]
+          </figcaption>
+        </figure>
+        <p class="note">
+          웹 근거: Dropbox도 공유 링크의 만료일과 다운로드 허용을 명시적 권한으로 제공하며, 만료 후
+          링크가 비활성화된다고 설명한다. [Web]
+        </p>
+        <div class="why">
+          <strong>Why this works:</strong> 사용자는 데이터 범위뿐 아니라 접근 시간과 전달 대상을
+          함께 판단해야 실제 공개 범위를 이해할 수 있다.
+        </div>
+        <pre>
+소득 조회 기간 [최근 3개월⌄]  링크 만료 [7일 후⌄]
+수신자 이메일 (선택)
+[name@company.com                         ]
+비워두면 링크만 만들고 직접 전달할 수 있어요.</pre>
+      </article>
+
+      <article class="idea">
+        <h3>4. 발급 버튼 옆에 최종 요약과 통제권 표시</h3>
+        <p>
+          데스크톱에서는 우측 sticky 요약, 모바일에서는 폼 아래 요약을 보여준다. 목적·공개 정보·조회
+          기간·만료·전달 방법을 확인한 뒤 “안전한 공유 링크 만들기”를 누른다. 생성 후에는 링크 복사
+          피드백과 PDF 다운로드를 한 성공 패널에 모은다.
+        </p>
+        <figure>
+          <img src="references/improved.png" alt="개선된 소득증명 공유 화면" />
+          <figcaption>
+            구현 결과 — 입력과 결과 요약이 동시에 보이며 CTA의 결과가 구체적이다.
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 되돌리기 어려운 공유 행동 직전에 결과를 재확인할 수 있고,
+          “언제든 철회” 문구가 사용자 통제권을 강화한다.
+        </div>
+        <pre>
+┌ 공유 전 확인 ──────────────┐
+│ 공개 목적  임대 계약 소득증명 │
+│ 공개 정보  소득 요약          │
+│ 최근 3개월 · 7일 후 만료      │
+│ 전달 방법  링크를 직접 전달   │
+│ [안전한 공유 링크 만들기]     │
+└────────────────────────────┘</pre>
+      </article>
+
+      <h2>What's Working</h2>
+      <ul>
+        <li>기존의 녹색 브랜드 컬러와 카드 스타일은 신뢰감 있는 핀테크 톤을 잘 유지한다.</li>
+        <li>목적 프리셋과 공개 LEVEL이라는 도메인 모델은 그대로 재사용할 가치가 있다.</li>
+        <li>발급 후 QR·PDF·철회가 제공되어 공유 이후 통제 흐름의 기반이 이미 갖춰져 있다.</li>
+        <li>
+          서버가 발급과 이메일 전송을 한 호출로 처리해 미발급 링크가 먼저 전달되는 상태를 방지한다.
+        </li>
+      </ul>
+
+      <h2>All References</h2>
+      <div class="gallery">
+        <figure>
+          <img src="references/improved-mobile.png" alt="개선된 모바일 화면" />
+          <figcaption>ServeProof 모바일 구현 결과</figcaption>
+        </figure>
+        <figure>
+          <img src="references/docusign-sharing.png" alt="DocuSign 공유 설정" />
+          <figcaption>DocuSign — 권한·만료 설정 [Lazyweb]</figcaption>
+        </figure>
+        <figure>
+          <img src="references/zoho-sharing.png" alt="Zoho 공유 설정" />
+          <figcaption>Zoho — 설명형 공유 설정 [Lazyweb]</figcaption>
+        </figure>
+        <figure>
+          <img src="references/clickup-sharing.png" alt="ClickUp 링크 설정" />
+          <figcaption>ClickUp — 링크 상태·만료 [Lazyweb]</figcaption>
+        </figure>
+      </div>
+      <p class="note">
+        추가 웹 참고: Dropbox Help의 shared-link expiration/download controls, Plaid Docs의 income
+        verification 유형 분리. 라이브 캡처 도구가 없어 웹 사례는 텍스트 근거로만 사용했다.
+      </p>
+    </main>
+  </body>
+</html>

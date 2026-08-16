@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Design Improvement: 미국 소득증명 제출처 프리셋</title>
+    <style>
+      :root {
+        --ink: #18181b;
+        --muted: #71717a;
+        --line: #e4e4e7;
+        --green: #059669;
+        --soft: #ecfdf5;
+        --blue: #eff6ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fafafa;
+        color: var(--ink);
+        font:
+          15px/1.65 system-ui,
+          -apple-system,
+          "Noto Sans KR",
+          sans-serif;
+      }
+      main {
+        max-width: 900px;
+        margin: auto;
+        padding: 56px 24px 88px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.25;
+        letter-spacing: -0.03em;
+      }
+      h2 {
+        margin: 48px 0 16px;
+        font-size: 23px;
+      }
+      h3 {
+        margin: 0 0 10px;
+        font-size: 19px;
+      }
+      p {
+        margin: 8px 0;
+        color: #3f3f46;
+      }
+      .eyebrow {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .tldr {
+        margin-top: 24px;
+        padding: 20px 22px;
+        border: 1px solid #bfdbfe;
+        border-radius: 16px;
+        background: var(--blue);
+      }
+      .tldr strong {
+        display: block;
+        color: #1d4ed8;
+      }
+      .idea {
+        margin-top: 24px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fff;
+      }
+      .impact {
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 800;
+      }
+      figure {
+        margin: 18px 0;
+      }
+      img {
+        display: block;
+        width: 100%;
+        margin-bottom: 8px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 6px 24px rgba(24, 24, 27, 0.07);
+      }
+      figcaption,
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .why {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-left: 3px solid var(--green);
+        background: var(--soft);
+      }
+      pre {
+        overflow: auto;
+        margin: 16px 0 0;
+        padding: 16px;
+        border-radius: 12px;
+        background: #18181b;
+        color: #f4f4f5;
+        font:
+          13px/1.5 ui-monospace,
+          SFMono-Regular,
+          monospace;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+      }
+      th,
+      td {
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f4f4f5;
+        font-size: 13px;
+      }
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .gallery figure {
+        margin: 0;
+      }
+      .gallery img {
+        height: 260px;
+        object-fit: contain;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      li {
+        margin: 7px 0;
+      }
+      a {
+        color: #047857;
+      }
+      @media (max-width: 640px) {
+        main {
+          padding: 32px 16px 64px;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+        .idea {
+          padding: 19px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Design improvement</div>
+      <h1>미국 실사용처 중심 소득증명 프리셋</h1>
+      <section class="tldr">
+        <strong>TL;DR</strong>기술적인 LEVEL 선택기를 실제 시민의 제출 목적 선택기로 바꾼다.
+        임대·SNAP/Medicaid·공공임대를 최상단에 두고, 선택한 기관 맥락에 따라 목적·기간·공개
+        수준·링크 만료를 함께 설정하며 ServeProof가 공식 서류를 대체하지 않는다는 한계를 먼저
+        밝힌다.
+      </section>
+      <h2>Current State</h2>
+      <figure>
+        <img src="references/current.png" alt="이전 소득증명 공유 화면" />
+        <figcaption>
+          이전 개선안 — 렌트·대출·세무만 제공해 실제 공공지원 제출처와 증빙 기간 차이가 드러나지
+          않는다.
+        </figcaption>
+      </figure>
+      <h2>실사용 우선순위</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>노출 순서</th>
+            <th>제출 목적</th>
+            <th>기본 설정</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>아파트·주택 임대</td>
+            <td>최근 3개월 · 소득 요약 · 7일 만료</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>SNAP·Medicaid</td>
+            <td>최근 4주 · 시프트/팁 상세 · 30일 만료</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>공공임대 재심사</td>
+            <td>최근 3개월 · 시프트 상세 · 30일 만료</td>
+          </tr>
+          <tr>
+            <td>확장</td>
+            <td>자동차 대출, 모기지, Marketplace, 이민, 세무, 기타</td>
+            <td>목적별 3개월/6개월/12개월/올해 누적/지난 역년</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2>Improvement Ideas</h2>
+      <article class="idea">
+        <div class="impact">⭐ HIGHEST IMPACT</div>
+        <h3>1. 제출처를 제품의 첫 번째 질문으로</h3>
+        <p>
+          “어떤 LEVEL이 필요한가?”가 아니라 “어디에 제출하는가?”를 먼저 묻는다. 상위 3개 사용처에는
+          우선순위를 표시하고 나머지는 확장 영역으로 내려 선택 피로를 줄인다.
+        </p>
+        <figure>
+          <img src="references/opal-goal-selector.png" alt="Opal 목표 선택 화면" />
+          <figcaption>
+            Opal — 사용자가 원하는 도움을 목표 카드로 먼저 선택하고 이후 경험을 개인화한다.
+            [Lazyweb]
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 노동자는 공개 모델을 모르지만 landlord, benefits
+          caseworker, auto lender는 안다. 익숙한 제출처에서 시작하면 시스템이 필요한 설정을 대신
+          추천할 수 있다.
+        </div>
+        <pre>
+어디에 제출하나요?&#10;[1 임대] [2 SNAP·Medicaid] [3 공공임대]&#10;[＋ 다른 제출 목적 보기]&#10;주요 수신처: property manager&#10;권장 설정: 최근 3개월 · 소득 요약</pre>
+      </article>
+      <article class="idea">
+        <h3>2. 프리셋이 목적·기간·범위를 함께 바꾸게</h3>
+        <p>
+          프리셋을 단순 문구 치환이 아니라 완성된 설정 묶음으로 만든다. 예를 들어 SNAP·Medicaid는
+          최근 4주와 팁 상세, Marketplace는 올해 누적, USCIS 보조는 최근 6개월을 기본으로 한다.
+        </p>
+        <figure>
+          <img src="references/redfin-goal-selector.png" alt="Redfin 금융 목적 선택 화면" />
+          <figcaption>
+            Redfin — Buy a home과 Refinance처럼 금융 목적을 먼저 구분해 뒤의 신청 흐름을 결정한다.
+            [Lazyweb]
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 같은 소득자료라도 기관이 보는 기간과 상세 수준은 다르다.
+          한 번의 목적 선택이 일관된 기본값을 만들되 사용자는 이후 모든 값을 수정할 수 있다.
+        </div>
+        <pre>
+SNAP·Medicaid 선택&#10;├ 목적: 자격 확인용 근로·팁 소득자료&#10;├ 기간: 최근 1개월&#10;├ 공개: 시프트별 상세&#10;└ 만료: 30일</pre>
+      </article>
+      <article class="idea">
+        <h3>3. 공식 대체재가 아닌 보조자료임을 먼저 알리기</h3>
+        <p>
+          발급 버튼 주변이 아니라 폼 시작부에 “검증 가능한 보조 소득자료”라고 명시한다. 공식 pay
+          stub, W-2, 세금신고서, 기관 양식을 대체하지 않으며 제출 전 담당자 확인이 필요하다는 안내를
+          유지한다.
+        </p>
+        <figure>
+          <img src="references/paypal-document-type.png" alt="PayPal 증빙 유형 선택 화면" />
+          <figcaption>
+            PayPal — 문서 유형을 먼저 고르고 명확한 업로드 지침을 제공한다. [Lazyweb]
+          </figcaption>
+        </figure>
+        <div class="why">
+          <strong>Why this works:</strong> 민감한 금융·복지 신청에서 수용 가능성을 과장하지
+          않으면서, 팁·변동 소득을 설명하는 제품의 실제 가치를 선명하게 만든다.
+        </div>
+        <pre>
+ⓘ 검증 가능한 보조 소득자료입니다.&#10;공식 급여명세서·W-2·기관 지정 양식을&#10;대체하지 않습니다.</pre>
+      </article>
+      <article class="idea">
+        <h3>4. 고정 $3,000 기준 제거</h3>
+        <p>
+          LEVEL 1을 선택할 때만 월 소득 기준 입력을 노출한다. 임대 신청의 경우 커뮤니티 기준을
+          확인하도록 안내하고, 흔한 월세 2.5~3배는 예시일 뿐 보편 규칙이 아니라고 설명한다.
+        </p>
+        <div class="why">
+          <strong>Why this works:</strong> 실제 월세와 기관 정책을 모르는 제품이 임의 기준을
+          강제하지 않으며, 최소 공개 방식인 pass/fail 옵션은 그대로 보존한다.
+        </div>
+        <pre>
+○ 충족 여부만&#10;월 소득 기준 [$ 4,500]&#10;각 property의 screening policy를 확인하세요.</pre>
+      </article>
+      <h2>What's Working</h2>
+      <ul>
+        <li>사용자가 공개 범위와 만료를 직접 통제하고 철회할 수 있는 기본 구조</li>
+        <li>LEVEL 1~3의 최소 공개 모델과 QR/PDF 검증 링크</li>
+        <li>데스크톱 최종 확인 패널과 모바일 단일 열 구조</li>
+        <li>프리셋 이후 목적·기간·공개 범위를 다시 수정할 수 있는 유연성</li>
+      </ul>
+      <h2>Implementation Result</h2>
+      <figure>
+        <img src="references/improved.png" alt="미국 제출처 중심으로 개선된 화면" />
+        <figcaption>
+          구현 결과 — 임대·공공지원 우선순위, 대표 수신처, 권장 설정, 보조자료 고지가 한 화면에
+          연결된다.
+        </figcaption>
+      </figure>
+      <h2>All References</h2>
+      <div class="gallery">
+        <figure>
+          <img src="references/improved-mobile.png" alt="모바일 구현 결과" />
+          <figcaption>ServeProof 모바일 구현</figcaption>
+        </figure>
+        <figure>
+          <img src="references/opal-goal-selector.png" alt="Opal 목표 선택" />
+          <figcaption>Opal 목표 카드 [Lazyweb]</figcaption>
+        </figure>
+        <figure>
+          <img src="references/redfin-goal-selector.png" alt="Redfin 목적 선택" />
+          <figcaption>Redfin 금융 목적 선택 [Lazyweb]</figcaption>
+        </figure>
+        <figure>
+          <img src="references/paypal-document-type.png" alt="PayPal 문서 유형" />
+          <figcaption>PayPal 증빙 유형 안내 [Lazyweb]</figcaption>
+        </figure>
+      </div>
+      <p class="note">
+        웹 근거: Greystar는 최근 2~3개월 pay stubs를 안내하고, NYC HRA는 earned income 증빙으로
+        current wage stubs와 statements of tips를 명시한다. HealthCare.gov는 최근 pay stubs,
+        self-employment ledger, 소득 설명서를 상황별로 안내한다. [Web]
+      </p>
+    </main>
+  </body>
+</html>

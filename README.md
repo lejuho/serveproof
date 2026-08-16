@@ -1,5 +1,7 @@
 # ServeProof
 
+[한국어](README.md) | [English](README.en.md)
+
 ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분되고, 지급되었는지를 검증 가능한 기록으로 만드는 데모 애플리케이션입니다. POS·근무기록에서 팁과 Timecard를 수집하고, 사업장 정책으로 배분한 뒤, 기존 급여 경로 또는 Solana Devnet의 테스트 USDC로 정산합니다. 노동자는 소득 기록 중 필요한 범위만 PDF와 QR 링크로 공유할 수 있습니다.
 
 > 이 저장소는 캡스톤/MVP 데모용입니다. Solana Devnet의 `tUSDC`는 실제 가치가 없으며, 현재 이메일 발송과 영구 PDF object storage는 운영 수준으로 연결되어 있지 않습니다.

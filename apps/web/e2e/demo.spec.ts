@@ -299,7 +299,9 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   });
 
   await test.step("20–21. Worker B issues a 3-month LEVEL_2 report with QR", async () => {
-    await workerB.getByRole("button", { name: "최근 3개월 보고서 발급" }).click();
+    await workerB.getByText("다른 제출 목적 보기").click();
+    await workerB.getByRole("button", { name: /자동차 대출/ }).click();
+    await workerB.getByRole("button", { name: "검증 가능한 보조 소득자료 만들기" }).click();
     const link = workerB.locator('a[href*="/verify/"]');
     await expect(link).toBeVisible({ timeout: 30_000 });
     shareUrl = (await link.getAttribute("href"))!;
