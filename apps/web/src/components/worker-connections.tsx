@@ -56,9 +56,16 @@ const rebuildActorLabel = (
   rebuild: WorkerConnectionsResponse["latestIncomeRebuild"],
   locale: "ko" | "en",
 ) => {
-  if (!rebuild) return "—";
+  if (!rebuild) return locale === "ko" ? "기록 없음" : "Not recorded";
   if (rebuild.actor) return actorLabel(rebuild.actor, locale);
-  return (locale === "ko" ? "시스템" : "System") + " · " + rebuild.source;
+  if (locale === "ko") {
+    const source =
+      { MANUAL: "직접 새로고침", SCHEDULED: "자동 새로고침", PROVIDER_SYNC: "자료 동기화" }[
+        rebuild.source
+      ] ?? rebuild.source;
+    return `시스템 · ${source}`;
+  }
+  return "System · " + rebuild.source;
 };
 
 export function WorkerConnections({
@@ -69,12 +76,26 @@ export function WorkerConnections({
   locale: "ko" | "en";
 }) {
   const ko = locale === "ko";
+  const empty = ko ? "없음" : "Not available";
+  const mappingStatus = (status: string) =>
+    ko
+      ? ({ PENDING: "확인 대기", CONFIRMED: "연결됨", REJECTED: "연결 거절" }[status] ?? status)
+      : status;
+  const payoutStatus = (status: string) =>
+    ko
+      ? ({
+          UNPAID: "지급 전",
+          PENDING: "지급 처리 중",
+          PAID: "지급 완료",
+          FAILED: "지급 실패",
+        }[status] ?? status)
+      : status;
   return (
     <Card
       title={ko ? "구성원 및 연결" : "People & connections"}
       description={
         ko
-          ? "외부 worker ID부터 로그인 계정, 수취 지갑, 배분·지급·소득원장 행위자까지 한 흐름으로 확인합니다."
+          ? "직원 계정 연결, 수취 지갑, 배분 및 지급 처리 내역을 한곳에서 확인할 수 있습니다."
           : "Trace each external worker ID through account, wallet, allocation, payout, and income actors."
       }
     >
@@ -82,22 +103,22 @@ export function WorkerConnections({
         <span className="font-semibold text-zinc-900">{data.venue.name}</span>
         <span className="text-zinc-300">·</span>
         <span>
-          Venue signer:{" "}
-          <code className="font-mono text-xs">{data.venue.payoutSignerWalletMasked ?? "—"}</code>
+          {ko ? "사업장 지급 지갑" : "Venue signer"}:{" "}
+          <code className="font-mono text-xs">{data.venue.payoutSignerWalletMasked ?? empty}</code>
         </span>
         <span className="ml-auto text-xs text-zinc-500">
-          {ko ? "최근 IncomeEntry 재계산" : "Latest IncomeEntry rebuild"}:{" "}
+          {ko ? "최근 소득 상태 새로고침" : "Latest income refresh"}:{" "}
           {data.latestIncomeRebuild
             ? rebuildActorLabel(data.latestIncomeRebuild, locale) +
               " · " +
               new Date(data.latestIncomeRebuild.at).toLocaleString(ko ? "ko-KR" : "en-US")
-            : "—"}
+            : empty}
         </span>
       </div>
 
       {data.members.length === 0 ? (
         <p className="text-sm text-zinc-400">
-          {ko ? "발견되거나 연결된 노동자가 없습니다." : "No workers discovered or connected."}
+          {ko ? "확인할 직원 계정이 없습니다." : "No workers discovered or connected."}
         </p>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -112,8 +133,8 @@ export function WorkerConnections({
                     : "UNKNOWN";
             const stageLabel = ko
               ? {
-                  EXTERNAL_ONLY: "외부 기록만 발견",
-                  MAPPING_PENDING: "계정 있음 · 매핑 대기",
+                  EXTERNAL_ONLY: "외부 기록만 있음",
+                  MAPPING_PENDING: "계정 연결 대기",
                   CONNECTED: "사업장 연결됨",
                   PAYOUT_READY: "지급 준비 완료",
                 }[member.connectionStage]
@@ -162,11 +183,12 @@ export function WorkerConnections({
                         key={account.provider + ":" + account.externalWorkerId}
                         className="mt-1 text-zinc-700"
                       >
-                        {account.provider} · {account.externalWorkerId} · {account.mappingStatus}
+                        {account.provider} · {account.externalWorkerId} ·{" "}
+                        {mappingStatus(account.mappingStatus)}
                       </p>
                     ))}
                     <p className="mt-1 text-zinc-700">
-                      {ko ? "수취 지갑" : "Recipient wallet"}: {member.defaultWalletMasked ?? "—"}
+                      {ko ? "수취 지갑" : "Recipient wallet"}: {member.defaultWalletMasked ?? empty}
                     </p>
                   </div>
                   <div>
@@ -176,7 +198,7 @@ export function WorkerConnections({
                         ? member.latestAllocation.businessDate +
                           " · " +
                           usd(member.latestAllocation.amountUsdCents)
-                        : "—"}
+                        : empty}
                     </p>
                     <p className="mt-1 text-zinc-500">
                       {ko ? "계산자" : "Calculated by"}:{" "}
@@ -191,12 +213,12 @@ export function WorkerConnections({
                     <p className="font-semibold text-zinc-500">{ko ? "지급" : "Payout"}</p>
                     <p className="mt-1 text-zinc-700">
                       {member.latestPayout
-                        ? member.latestPayout.rail + " · " + member.latestPayout.status
-                        : "—"}
+                        ? member.latestPayout.rail + " · " + payoutStatus(member.latestPayout.status)
+                        : empty}
                     </p>
                     <p className="mt-1 text-zinc-500">
                       {ko ? "서명 지갑" : "Signer wallet"}:{" "}
-                      {member.latestPayout?.signerWalletMasked ?? "—"}
+                      {member.latestPayout?.signerWalletMasked ?? empty}
                     </p>
                     <p className="mt-1 text-zinc-500">
                       {ko ? "제출 계정" : "Submitted by"}:{" "}
@@ -204,13 +226,15 @@ export function WorkerConnections({
                     </p>
                   </div>
                   <div>
-                    <p className="font-semibold text-zinc-500">IncomeEntry</p>
+                    <p className="font-semibold text-zinc-500">
+                      {ko ? "소득 내역" : "Income entries"}
+                    </p>
                     <p className="mt-1 text-zinc-700">
                       {member.incomeEntries.count}
                       {ko ? "건" : " entries"}
                     </p>
                     <p className="mt-1 text-zinc-500">
-                      {ko ? "최근 재계산자" : "Latest rebuild by"}:{" "}
+                      {ko ? "최근 새로고침" : "Latest refresh by"}:{" "}
                       {rebuildActorLabel(data.latestIncomeRebuild, locale)}
                     </p>
                   </div>

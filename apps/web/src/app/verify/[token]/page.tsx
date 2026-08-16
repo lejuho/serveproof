@@ -52,7 +52,7 @@ const STATUS_HERO: Record<string, { box: string; icon: string; message: string }
 
 /** Public verifier view (spec §3.4, §21.2) — no account required. */
 export default function VerifyPage({ params }: { params: Promise<{ token: string }> }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const { token } = use(params);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,12 +104,14 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                   <Badge>{result.level}</Badge>
                 </dd>
                 <dt className="text-zinc-400">{t("verify.issuedAt")}</dt>
-                <dd className="tabular-nums">{result.issuedAt ?? "—"}</dd>
+                <dd className="tabular-nums">
+                  {result.issuedAt ?? (locale === "ko" ? "정보 없음" : "Not available")}
+                </dd>
                 <dt className="text-zinc-400">{t("verify.expiresAt")}</dt>
                 <dd className="tabular-nums">{result.expiresAt}</dd>
                 <dt className="text-zinc-400">Report hash</dt>
                 <dd className="break-all font-mono text-xs leading-relaxed text-zinc-500">
-                  {result.reportHash ?? "—"}
+                  {result.reportHash ?? (locale === "ko" ? "정보 없음" : "Not available")}
                 </dd>
               </dl>
             </Card>

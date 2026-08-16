@@ -97,6 +97,48 @@ function usd(cents: number): string {
 
 export default function DashboardPage() {
   const { locale, t } = useI18n();
+  const statusLabel = (value: string) => {
+    if (locale !== "ko") return value;
+    const labels: Record<string, string> = {
+      DRAFT: "작성 중",
+      CALCULATED: "계산 완료",
+      REVIEW_REQUIRED: "검토 필요",
+      APPROVED: "승인 완료",
+      UNPAID: "지급 전",
+      PENDING: "처리 중",
+      PAID: "지급 완료",
+      FAILED: "실패",
+      CREATED: "요청 생성됨",
+      INITIATED: "전송 준비 중",
+      SUBMITTED: "전송됨",
+      CONFIRMED: "확인됨",
+      FINALIZED: "최종 확정",
+    };
+    return labels[value] ?? value;
+  };
+  const issueLabel = (issue: Batch["reviewIssues"][number]) => {
+    if (locale !== "ko") return `${issue.code} ${JSON.stringify(issue.detail)}`;
+    const amount =
+      typeof issue.detail.amountUsdCents === "number" ? usd(issue.detail.amountUsdCents) : null;
+    switch (issue.code) {
+      case "REFUNDED_PAYMENT_EXCLUDED":
+        return `${amount ? `${amount}의 ` : ""}환불된 결제는 배분 대상에서 제외했습니다.`;
+      case "CANCELED_PAYMENT_EXCLUDED":
+        return `${amount ? `${amount}의 ` : ""}취소된 결제는 배분 대상에서 제외했습니다.`;
+      case "UNMAPPED_WORKER":
+        return `계정에 연결되지 않은 직원(${String(issue.detail.externalWorkerId ?? "정보 없음")})의 근무 기록이 있습니다.`;
+      case "NON_POSITIVE_MINUTES":
+        return "근무 시간이 올바르지 않은 기록이 있습니다. 근무 시간을 확인해 주세요.";
+      case "UNKNOWN_ROLE":
+        return `배분 정책에 등록되지 않은 직무(${String(issue.detail.role ?? "정보 없음")})가 있습니다.`;
+      case "EMPTY_POOL":
+        return "이 영업일에는 배분할 팁이 없습니다.";
+      case "NO_ELIGIBLE_SHIFTS":
+        return "배분 대상에 포함할 수 있는 근무 기록이 없습니다.";
+      default:
+        return "배분 전에 확인해야 할 항목이 있습니다.";
+    }
+  };
   const router = useRouter();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [venueId, setVenueId] = useState<string>("");
@@ -354,7 +396,7 @@ export default function DashboardPage() {
           allocationId,
           current.status === "CONFIRMED"
             ? t("dash.progress.confirmed")
-            : `${t("dash.progress.onchain")} ${current.status}`,
+            : `${t("dash.progress.onchain")} ${statusLabel(current.status)}`,
         );
         if (["FINALIZED", "FAILED"].includes(current.status)) {
           terminal = true;
@@ -401,7 +443,7 @@ export default function DashboardPage() {
   return (
     <AppShell
       wide
-      title="Venue Dashboard"
+      title={locale === "ko" ? "사업장 관리" : "Venue Dashboard"}
       subtitle={t("dash.subtitle")}
       right={
         <>
@@ -413,7 +455,7 @@ export default function DashboardPage() {
             {orgs.flatMap((org) =>
               org.venues.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {org.displayName} — {v.name}
+                  {org.displayName} / {v.name}
                 </option>
               )),
             )}
@@ -532,7 +574,11 @@ export default function DashboardPage() {
 
       {workerConnections && <WorkerConnections data={workerConnections} locale={locale} />}
 
-      <Card step={1} title="CSV Import" description={t("dash.csv.desc")}>
+      <Card
+        step={1}
+        title={locale === "ko" ? "팁 및 근무 기록 가져오기" : "CSV Import"}
+        description={t("dash.csv.desc")}
+      >
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
             {t("dash.source.label")}
@@ -553,22 +599,22 @@ export default function DashboardPage() {
         />
         <div className="mt-3 flex items-center gap-4">
           <Button variant="dark" onClick={importCsv} disabled={busy || !csvText || !venueId}>
-            Import
+            {locale === "ko" ? "가져오기" : "Import"}
           </Button>
           {importResult && (
             <p className="text-sm text-zinc-500">
               {locale === "ko" ? (
                 <>
-                  팁 <b className="text-zinc-800">{importResult.tipsUpserted}건</b>, 시프트{" "}
+                  팁 <b className="text-zinc-800">{importResult.tipsUpserted}건</b>, 근무 기록{" "}
                   <b className="text-zinc-800">{importResult.shiftsUpserted}건</b> (매핑{" "}
-                  {importResult.mappedShifts} / 미매핑 {importResult.unmappedShifts})
+                  {importResult.mappedShifts} / 연결 필요 {importResult.unmappedShifts})
                   {importResult.errors.length > 0 && (
-                    <span className="text-red-600"> — 오류 {importResult.errors.length}건</span>
+                    <span className="text-red-600">. 오류 {importResult.errors.length}건</span>
                   )}
                   {!!importResult.businessDates?.length && (
                     <span className="text-emerald-700">
                       {" "}
-                      — 영업일 {importResult.businessDates.join(", ")} 감지, 계산 날짜 자동 선택됨
+                      . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로 자동 선택했습니다.
                     </span>
                   )}
                 </>
@@ -578,12 +624,12 @@ export default function DashboardPage() {
                   <b className="text-zinc-800">{importResult.shiftsUpserted}</b> shifts (
                   {importResult.mappedShifts} mapped / {importResult.unmappedShifts} unmapped)
                   {importResult.errors.length > 0 && (
-                    <span className="text-red-600"> — {importResult.errors.length} errors</span>
+                    <span className="text-red-600">. {importResult.errors.length} errors</span>
                   )}
                   {!!importResult.businessDates?.length && (
                     <span className="text-emerald-700">
                       {" "}
-                      — detected {importResult.businessDates.join(", ")}; calc date auto-selected
+                      . Detected {importResult.businessDates.join(", ")}; calculation date was selected automatically.
                     </span>
                   )}
                 </>
@@ -594,7 +640,11 @@ export default function DashboardPage() {
       </Card>
 
       <div id="card-mapping" className="scroll-mt-6" />
-      <Card step={2} title="Worker Mapping" description={t("dash.mapping.desc")}>
+      <Card
+        step={2}
+        title={locale === "ko" ? "직원 계정 연결" : "Worker Mapping"}
+        description={t("dash.mapping.desc")}
+      >
         {unmapped && unmapped.pendingMappings.length === 0 ? (
           <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
         ) : (
@@ -644,7 +694,7 @@ export default function DashboardPage() {
         {batch && (
           <div className="mt-5 flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
-              <Badge tone={batch.status}>{batch.status}</Badge>
+              <Badge tone={batch.status}>{statusLabel(batch.status)}</Badge>
               <span className="text-sm text-zinc-500">
                 {batch.businessDate} · {t("dash.policy")} v{batch.policyVersion}
               </span>
@@ -659,8 +709,8 @@ export default function DashboardPage() {
             {batch.reviewIssues.length > 0 && (
               <ul className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 {batch.reviewIssues.map((issue, i) => (
-                  <li key={i} className="font-mono text-xs leading-relaxed">
-                    {issue.blocking ? "⛔" : "ℹ️"} {issue.code} {JSON.stringify(issue.detail)}
+                  <li key={i} className="text-xs leading-relaxed">
+                    {issue.blocking ? "확인 필요:" : "안내:"} {issueLabel(issue)}
                   </li>
                 ))}
               </ul>
@@ -740,7 +790,7 @@ export default function DashboardPage() {
                   </td>
                   <td className={tableCellClass}>
                     <Badge tone={a.payoutStatus}>
-                      {a.payoutStatus}
+                      {statusLabel(a.payoutStatus)}
                       {a.payoutRail ? ` · ${a.payoutRail}` : ""}
                     </Badge>
                     {payoutProgress[a.id] && (
@@ -817,7 +867,11 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <Card step={5} title="Income Observability" description={t("dash.income.desc")}>
+      <Card
+        step={5}
+        title={locale === "ko" ? "소득 상태 확인" : "Income status"}
+        description={t("dash.income.desc")}
+      >
         <div className="flex items-center gap-4">
           <Button variant="dark" onClick={rebuildIncome} disabled={busy || !venueId}>
             {t("dash.income.rebuild")}
@@ -825,8 +879,8 @@ export default function DashboardPage() {
           {rebuildResult && (
             <span className="text-sm text-zinc-500">
               {locale === "ko"
-                ? `IncomeEntry ${rebuildResult.entriesUpserted}건 재계산, discrepancy 경고 ${rebuildResult.alerts}건`
-                : `${rebuildResult.entriesUpserted} income entries rebuilt, ${rebuildResult.alerts} discrepancy alerts`}
+                ? `소득 내역 ${rebuildResult.entriesUpserted}건을 새로고침했습니다. 확인 필요 항목은 ${rebuildResult.alerts}건입니다.`
+                : `${rebuildResult.entriesUpserted} income entries refreshed. ${rebuildResult.alerts} items require review.`}
             </span>
           )}
         </div>

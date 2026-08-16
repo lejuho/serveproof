@@ -210,7 +210,7 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   await test.step("10. Worker A payroll route via UI (legacy evidence)", async () => {
     page.once("dialog", (dialog) => dialog.accept(`gusto-run-${RUN}`));
     const rowA = page.locator("tr", { hasText: "Worker A" });
-    await rowA.getByRole("button", { name: "Legacy 증빙" }).click();
+    await rowA.getByRole("button", { name: "급여 이체 기록" }).click();
     await expect(rowA.getByText(/PAID · PAYROLL/)).toBeVisible({ timeout: 15_000 });
   });
 
@@ -281,8 +281,10 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
         },
       ],
     });
-    await page.getByRole("button", { name: "IncomeEntry 재계산" }).click();
-    await expect(page.getByText(/IncomeEntry \d+건 재계산/)).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "소득 상태 새로고침" }).click();
+    await expect(page.getByText(/소득 내역 \d+건을 새로고침했습니다/)).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
   let workerB: Page;
@@ -301,7 +303,7 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   await test.step("20–21. Worker B issues a 3-month LEVEL_2 report with QR", async () => {
     await workerB.getByText("다른 제출 목적 보기").click();
     await workerB.getByRole("button", { name: /자동차 대출/ }).click();
-    await workerB.getByRole("button", { name: "검증 가능한 보조 소득자료 만들기" }).click();
+    await workerB.getByRole("button", { name: "소득 확인 자료 만들기" }).click();
     const link = workerB.locator('a[href*="/verify/"]');
     await expect(link).toBeVisible({ timeout: 30_000 });
     shareUrl = (await link.getAttribute("href"))!;

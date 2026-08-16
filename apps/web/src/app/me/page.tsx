@@ -103,6 +103,22 @@ function maskEmail(email: string): string {
 
 export default function MyIncomePage() {
   const { locale, t } = useI18n();
+  const statusLabel = (value: string) => {
+    if (locale !== "ko") return value;
+    const labels: Record<string, string> = {
+      UNKNOWN: "확인 전",
+      PENDING: "확인 중",
+      CONFIRMED: "확인됨",
+      ACTIVE: "사용 중",
+      REVOKED: "철회됨",
+      ISSUED: "발급 완료",
+      FAILED: "실패",
+      LEVEL_1: "1단계",
+      LEVEL_2: "2단계",
+      LEVEL_3: "3단계",
+    };
+    return labels[value] ?? value;
+  };
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -435,7 +451,7 @@ export default function MyIncomePage() {
           <StatCard
             label={t("me.stat.payers")}
             value={`${summary.payerCount} · ${summary.shiftCount}`}
-            hint="payer count · shifts"
+            hint={locale === "ko" ? "사업장 수 · 근무 건수" : "payer count · shifts"}
           />
         </div>
       )}
@@ -452,7 +468,7 @@ export default function MyIncomePage() {
                 key={alert.id}
                 className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
               >
-                <Badge tone="REVIEW_REQUIRED">{alert.type}</Badge>
+                <Badge tone="REVIEW_REQUIRED">{t(`alert.label.${alert.type}`)}</Badge>
                 <span className="text-sm text-amber-800">{t(`alert.${alert.type}`)}</span>
               </li>
             ))}
@@ -501,7 +517,9 @@ export default function MyIncomePage() {
                     {usd(entry.payrollReportedUsdCents)}
                   </td>
                   <td className={tableCellClass}>
-                    <Badge tone={entry.withholdingStatus}>{entry.withholdingStatus}</Badge>
+                    <Badge tone={entry.withholdingStatus}>
+                      {statusLabel(entry.withholdingStatus)}
+                    </Badge>
                   </td>
                   <td className={`${tableCellClass} text-sm text-zinc-500`}>
                     {entry.payoutRail === "USDC" && entry.payoutTxSignature ? (
@@ -515,7 +533,7 @@ export default function MyIncomePage() {
                         USDC ↗
                       </a>
                     ) : (
-                      (entry.payoutRail ?? "—")
+                      (entry.payoutRail ?? (locale === "ko" ? "없음" : "Not available"))
                     )}
                   </td>
                   <td className={tableCellClass}>
@@ -810,7 +828,7 @@ export default function MyIncomePage() {
               <div>
                 <dt className="text-zinc-500">{t("me.share.purpose")}</dt>
                 <dd className="mt-1 font-semibold leading-relaxed text-zinc-900">
-                  {purpose || "—"}
+                  {purpose || (locale === "ko" ? "입력하지 않음" : "Not provided")}
                 </dd>
               </div>
               {level === "LEVEL_1" && (
@@ -915,14 +933,16 @@ export default function MyIncomePage() {
                 className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="flex min-w-0 flex-wrap items-center gap-2.5 text-[15px]">
-                  <Badge>{grant.level}</Badge>
+                  <Badge>{statusLabel(grant.level)}</Badge>
                   <span className="text-zinc-700">{grant.purpose}</span>
                   <span className="text-sm text-zinc-400">
                     {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
                   </span>
                   {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
                   {!grant.revokedAt && grant.reports[0] && (
-                    <Badge tone={grant.reports[0].status}>{grant.reports[0].status}</Badge>
+                    <Badge tone={grant.reports[0].status}>
+                      {statusLabel(grant.reports[0].status)}
+                    </Badge>
                   )}
                 </span>
                 <span className="flex gap-2">

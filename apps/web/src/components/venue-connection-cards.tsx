@@ -37,12 +37,26 @@ export function VenueConnectionCards({
   locale: "ko" | "en";
 }) {
   const ko = locale === "ko";
+  const empty = ko ? "없음" : "Not available";
+  const mappingStatus = (status: string) =>
+    ko
+      ? ({ PENDING: "확인 대기", CONFIRMED: "연결됨", REJECTED: "연결 거절" }[status] ?? status)
+      : status;
+  const payoutStatus = (status: string) =>
+    ko
+      ? ({
+          UNPAID: "지급 전",
+          PENDING: "지급 처리 중",
+          PAID: "지급 완료",
+          FAILED: "지급 실패",
+        }[status] ?? status)
+      : status;
   return (
     <Card
       title={ko ? "연결된 사업장" : "Connected venues"}
       description={
         ko
-          ? "사업장별 외부 계정, 수취 지갑, 최근 배분·지급과 소득원장 연결 상태입니다."
+          ? "사업장별 계정 연결, 수취 지갑, 최근 배분 및 지급 내역을 확인할 수 있습니다."
           : "Your external identity, payout wallet, latest settlement, and income ledger by venue."
       }
     >
@@ -63,7 +77,7 @@ export function VenueConnectionCards({
                     ? "사업장 연결됨"
                     : "Connected"
                   : ko
-                    ? "매핑 대기"
+                    ? "계정 연결 대기"
                     : "Mapping pending";
             return (
               <details
@@ -104,7 +118,7 @@ export function VenueConnectionCards({
                     </span>
                     <span>→</span>
                     <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">
-                      IncomeEntry {connection.incomeEntries.count}
+                      {ko ? "소득 내역" : "Income entries"} {connection.incomeEntries.count}
                     </span>
                   </div>
                 </summary>
@@ -118,12 +132,13 @@ export function VenueConnectionCards({
                         key={account.provider + ":" + account.externalWorkerId}
                         className="mt-1 text-zinc-700"
                       >
-                        {account.provider} · {account.externalWorkerId} · {account.mappingStatus}
+                        {account.provider} · {account.externalWorkerId} ·{" "}
+                        {mappingStatus(account.mappingStatus)}
                       </p>
                     ))}
                     <p className="mt-1 text-zinc-700">
                       {ko ? "수취 지갑" : "Recipient wallet"}:{" "}
-                      {connection.defaultWalletMasked ?? "—"}
+                      {connection.defaultWalletMasked ?? empty}
                     </p>
                   </div>
                   <div>
@@ -135,16 +150,18 @@ export function VenueConnectionCards({
                         ? connection.latestAllocation.businessDate +
                           " · " +
                           usd(connection.latestAllocation.amountUsdCents)
-                        : "—"}
+                        : empty}
                     </p>
                     <p className="mt-1 text-zinc-500">
                       {ko ? "지급" : "Payout"}:{" "}
                       {connection.latestPayout
-                        ? connection.latestPayout.rail + " · " + connection.latestPayout.status
-                        : "—"}
+                        ? connection.latestPayout.rail +
+                          " · " +
+                          payoutStatus(connection.latestPayout.status)
+                        : empty}
                     </p>
                     <p className="mt-1 text-zinc-500">
-                      IncomeEntry: {connection.incomeEntries.count}
+                      {ko ? "소득 내역" : "Income entries"}: {connection.incomeEntries.count}
                       {ko ? "건" : " entries"}
                     </p>
                   </div>

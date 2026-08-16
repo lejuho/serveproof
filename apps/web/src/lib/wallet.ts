@@ -41,7 +41,7 @@ export async function signTransactionBase64(
   const { publicKey } = await provider.connect();
   if (publicKey.toBase58() !== expectedSigner) {
     throw new Error(
-      `연결된 지갑(${publicKey.toBase58().slice(0, 8)}…)이 venue signer(${expectedSigner.slice(0, 8)}…)와 다릅니다.`,
+      `연결된 지갑(${publicKey.toBase58().slice(0, 8)}…)이 등록된 사업장 지급 지갑(${expectedSigner.slice(0, 8)}…)과 다릅니다.`,
     );
   }
   const raw = Uint8Array.from(atob(unsignedBase64), (c) => c.charCodeAt(0));
