@@ -1,6 +1,7 @@
 // Demo seed — spec §29.6 (staging seed) / §26 (demo scenario).
 // Idempotent: re-running updates in place instead of duplicating.
 import { PrismaClient } from "@prisma/client";
+import { DEMO_CONFIG } from "../../../scripts/demo-config.mjs";
 
 const prisma = new PrismaClient();
 
@@ -30,8 +31,8 @@ async function upsertUser(authUserId, email, displayName, role) {
 async function main() {
   // ── Venue manager + organization ──────────────────────────────
   const manager = await upsertUser(
-    "demo-manager",
-    "manager@demo.serveproof.local",
+    DEMO_CONFIG.managerAuthUserId,
+    DEMO_CONFIG.managerEmail,
     "Demo Manager",
     "VENUE_MANAGER",
   );
@@ -42,15 +43,15 @@ async function main() {
   });
 
   let org = await prisma.organization.findFirst({
-    where: { legalName: "ServeProof Demo LLC" },
+    where: { legalName: DEMO_CONFIG.organizationLegalName },
   });
   if (!org) {
     org = await prisma.organization.create({
       data: {
-        legalName: "ServeProof Demo LLC",
-        displayName: "ServeProof Demo",
+        legalName: DEMO_CONFIG.organizationLegalName,
+        displayName: DEMO_CONFIG.organizationDisplayName,
         country: "US",
-        timezone: "America/New_York",
+        timezone: DEMO_CONFIG.venueTimezone,
       },
     });
   }
@@ -61,16 +62,55 @@ async function main() {
     create: { organizationId: org.id, userId: manager.id, role: "OWNER" },
   });
 
-  let venue = await prisma.venue.findFirst({
-    where: { organizationId: org.id, name: "Demo Diner" },
+  let venue = await prisma.venue.findUnique({ where: { id: DEMO_CONFIG.venueId } });
+  const venueByName = await prisma.venue.findFirst({
+    where: { organizationId: org.id, name: DEMO_CONFIG.venueName },
   });
+  if (!venue && venueByName) {
+    throw new Error(
+      `Demo Diner identity mismatch: expected ${DEMO_CONFIG.venueId}, found ${venueByName.id}. ` +
+        "Refusing to create or silently reuse a venue with a different on-chain identity.",
+    );
+  }
+  if (venue && venue.organizationId !== org.id) {
+    throw new Error(
+      `Canonical demo venue ${DEMO_CONFIG.venueId} belongs to another organization. Refusing seed.`,
+    );
+  }
+  const useDevnetIdentity =
+    process.env.APP_ENV === "staging" || process.env.SOLANA_NETWORK === "devnet";
+  const onchainData = useDevnetIdentity
+    ? {
+        solanaVenuePda: DEMO_CONFIG.devnet.venuePda,
+        vaultTokenAccount: DEMO_CONFIG.devnet.venueVault,
+        payoutSignerWallet: DEMO_CONFIG.devnet.venueAuthority,
+      }
+    : {};
   if (!venue) {
     venue = await prisma.venue.create({
       data: {
+        id: DEMO_CONFIG.venueId,
         organizationId: org.id,
-        name: "Demo Diner",
-        timezone: "America/New_York",
-        externalIds: { csv: "venue_001", toast_mock: "venue_001" },
+        name: DEMO_CONFIG.venueName,
+        timezone: DEMO_CONFIG.venueTimezone,
+        externalIds: {
+          csv: DEMO_CONFIG.externalVenueId,
+          toast_mock: DEMO_CONFIG.externalVenueId,
+        },
+        ...onchainData,
+      },
+    });
+  } else {
+    venue = await prisma.venue.update({
+      where: { id: venue.id },
+      data: {
+        name: DEMO_CONFIG.venueName,
+        timezone: DEMO_CONFIG.venueTimezone,
+        externalIds: {
+          csv: DEMO_CONFIG.externalVenueId,
+          toast_mock: DEMO_CONFIG.externalVenueId,
+        },
+        ...onchainData,
       },
     });
   }
@@ -80,21 +120,21 @@ async function main() {
     {
       authUserId: "demo-worker-a",
       email: "worker.a@demo.serveproof.local",
-      name: "Worker A",
+      name: "Alice",
       externalWorkerId: "worker_001",
       mappingStatus: "CONFIRMED",
     },
     {
       authUserId: "demo-worker-b",
       email: "worker.b@demo.serveproof.local",
-      name: "Worker B",
+      name: "Bob",
       externalWorkerId: "worker_002",
       mappingStatus: "CONFIRMED",
     },
     {
       authUserId: "demo-worker-c",
       email: "worker.c@demo.serveproof.local",
-      name: "Worker C",
+      name: "Carol",
       externalWorkerId: "worker_003",
       mappingStatus: "PENDING", // §26 step 5 — worker accepts the venue connection request
     },

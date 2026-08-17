@@ -9,6 +9,8 @@
   },
   "scripts": {
     "seed": "node prisma/seed.mjs",
+    "demo:doctor": "node prisma/demo-doctor.mjs",
+    "demo:prepare": "node prisma/demo-prepare.mjs",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
@@ -20,6 +22,9 @@
     "@prisma/client": "~6.19.3"
   },
   "devDependencies": {
+    "@serveproof/solana": "workspace:*",
+    "@solana/spl-token": "~0.4.15",
+    "@solana/web3.js": "~1.98.4",
     "prisma": "~6.19.3",
     "typescript": "~5.9.3"
   }

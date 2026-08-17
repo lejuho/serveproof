@@ -765,6 +765,14 @@ export default function DashboardPage() {
     });
 
   const payable = batch && ["PAYABLE", "PARTIALLY_PAID", "PAID"].includes(batch.status);
+  const onchainPayoutReady = Boolean(
+    settlementClose?.treasury.status === "AVAILABLE" &&
+    settlementClose.treasury.differenceUsdCents !== null &&
+    settlementClose.treasury.differenceUsdCents >= 0 &&
+    settlementClose.treasury.signerWallet &&
+    settlementClose.treasury.signerSolLamports !== null &&
+    settlementClose.treasury.signerSolLamports > 0,
+  );
   const hasUnassignedRails = !!batch?.allocations.some(
     (a) => a.worker && !a.plannedPayoutRail && a.payoutStatus !== "PAID",
   );
@@ -1701,6 +1709,13 @@ export default function DashboardPage() {
           {batch && payable && (
             <Card step={3} title={t("dash.payout.title")} description={t("dash.payout.desc")}>
               <Callout tone="amber">{t("dash.payout.callout")}</Callout>
+              {!onchainPayoutReady && (
+                <Callout tone="red">
+                  {locale === "ko"
+                    ? "온체인 지급 준비가 완료되지 않았습니다. 위 마감 카드에서 venue vault, 잔액, signer SOL을 확인하세요."
+                    : "On-chain payout is not ready. Check the venue vault, balance, and signer SOL in the close card above."}
+                </Callout>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
                 {walletAddress ? (
                   <>
@@ -1820,9 +1835,15 @@ export default function DashboardPage() {
                               size="sm"
                               variant="violet"
                               onClick={() => payUsdc(a.id)}
-                              disabled={busy || !a.worker.defaultWalletId}
+                              disabled={busy || !a.worker.defaultWalletId || !onchainPayoutReady}
                               title={
-                                a.worker.defaultWalletId ? undefined : t("dash.payout.noWallet")
+                                !a.worker.defaultWalletId
+                                  ? t("dash.payout.noWallet")
+                                  : !onchainPayoutReady
+                                    ? locale === "ko"
+                                      ? "venue vault 또는 signer가 준비되지 않았습니다."
+                                      : "The venue vault or signer is not ready."
+                                    : undefined
                               }
                             >
                               {t("dash.payout.usdc")}

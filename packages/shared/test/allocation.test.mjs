@@ -63,13 +63,14 @@ test("cash tips excluded from pool by policy (CASH_RETAINED separation)", () => 
   assert.equal(result.poolUsdCents, 10000);
 });
 
-test("unmapped worker produces blocking issue and is excluded", () => {
+test("unmapped worker produces a non-blocking held allocation", () => {
   const result = computeAllocationBatch(
     [{ tipType: "CARD_TIP", grossAmountUsdCents: 12000 }],
     [
       ...demoShifts,
       {
         workerId: null,
+        provider: "toast_mock",
         externalWorkerId: "w4",
         role: "SERVER",
         workedMinutes: 100,
@@ -80,8 +81,11 @@ test("unmapped worker produces blocking issue and is excluded", () => {
   );
   const issue = result.issues.find((i) => i.code === "UNMAPPED_WORKER");
   assert.ok(issue);
-  assert.equal(issue.blocking, true);
-  assert.equal(result.allocations.length, 3);
+  assert.equal(issue.blocking, false);
+  assert.equal(result.allocations.length, 4);
+  const held = result.allocations.find((allocation) => allocation.workerId === null);
+  assert.equal(held.externalWorkerId, "w4");
+  assert.equal(held.provider, "toast_mock");
 });
 
 test("excluded roles, voided shifts, zero minutes, unknown roles", () => {

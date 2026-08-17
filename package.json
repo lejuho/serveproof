@@ -18,6 +18,8 @@
     "dev:api": "pnpm --filter @serveproof/api start:dev",
     "dev:worker": "pnpm --filter @serveproof/worker start:dev",
     "demo:setup": "bash scripts/demo-setup.sh",
+    "demo:doctor": "pnpm --filter @serveproof/solana build && pnpm --filter @serveproof/db build && pnpm --filter @serveproof/db demo:doctor",
+    "demo:prepare": "pnpm --filter @serveproof/solana build && pnpm --filter @serveproof/db build && pnpm --filter @serveproof/db demo:prepare",
     "demo:start": "bash scripts/demo-start.sh",
     "demo:stop": "bash scripts/demo-stop.sh"
   },

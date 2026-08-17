@@ -1,0 +1,21 @@
+export const DEMO_CONFIG = Object.freeze({
+  organizationLegalName: "ServeProof Demo LLC",
+  organizationDisplayName: "ServeProof Demo",
+  venueId: "02acca32-d4c2-46c8-828f-3bec1dd4d848",
+  venueName: "Demo Diner",
+  venueTimezone: "America/New_York",
+  externalVenueId: "venue_001",
+  managerAuthUserId: "demo-manager",
+  managerEmail: "manager@demo.serveproof.local",
+  devnet: Object.freeze({
+    rpcUrl: "https://api.devnet.solana.com",
+    programId: "A2snJHtFRK8wKawieDTQy6wMReJCP3BxU6i6y9aECJhi",
+    usdcMint: "4R3s4BJLvBMKKgWFxsxPTCnZDuDK9dB46WJKPeaJMrDF",
+    venueAuthority: "8uBouRGv78yhVRHEcdmd385YTLV9WuFJNhmprZdNZU8k",
+    venuePda: "2Kv3zS5MCMPHaCijs6jxuz2kzZp3jHXz8w2yNZDcSHrQ",
+    vaultAuthorityPda: "8MsEjXabbWx1pbS4n2Rb4k7DzBnBKEp9V7Vg1khzx4EN",
+    venueVault: "69Lxm416u7omGGzhoc3jmgnyukdtuLnhuZyhojtE19FJ",
+    minimumVaultBaseUnits: 60_000_000n,
+    minimumSignerLamports: 50_000_000,
+  }),
+});

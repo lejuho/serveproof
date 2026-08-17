@@ -287,7 +287,7 @@ SERVEPROOF_PROGRAM_ID=A2snJHtFRK8wKawieDTQy6wMReJCP3BxU6i6y9aECJhi
 USDC_MINT=4R3s4BJLvBMKKgWFxsxPTCnZDuDK9dB46WJKPeaJMrDF
 ```
 
-이 mint는 데모용 `tUSDC`이며 금전적 가치가 없습니다. Devnet 상태는 [onchain/devnet-state.json](onchain/devnet-state.json)에 기록되어 있습니다. 프로그램을 직접 빌드·테스트·재배포하려면 `onchain/`을 별도 workspace처럼 설치하고 Anchor/Solana CLI wallet을 준비해야 합니다.
+이 mint는 데모용 `tUSDC`이며 금전적 가치가 없습니다. Devnet 상태는 venue별로 `onchain/state/devnet-demo.json`과 `onchain/state/devnet-smoke.json`에 분리해 기록합니다. 프로그램을 직접 빌드·테스트·재배포하려면 `onchain/`을 별도 workspace처럼 설치하고 Anchor/Solana CLI wallet을 준비해야 합니다.
 
 ```bash
 cd onchain

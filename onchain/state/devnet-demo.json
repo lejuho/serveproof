@@ -1,0 +1,12 @@
+{
+  "profile": "demo",
+  "usdcMint": "4R3s4BJLvBMKKgWFxsxPTCnZDuDK9dB46WJKPeaJMrDF",
+  "programId": "A2snJHtFRK8wKawieDTQy6wMReJCP3BxU6i6y9aECJhi",
+  "venueId": "02acca32-d4c2-46c8-828f-3bec1dd4d848",
+  "venuePda": "2Kv3zS5MCMPHaCijs6jxuz2kzZp3jHXz8w2yNZDcSHrQ",
+  "vaultAuthorityPda": "8MsEjXabbWx1pbS4n2Rb4k7DzBnBKEp9V7Vg1khzx4EN",
+  "venueVault": "69Lxm416u7omGGzhoc3jmgnyukdtuLnhuZyhojtE19FJ",
+  "venueAuthority": "8uBouRGv78yhVRHEcdmd385YTLV9WuFJNhmprZdNZU8k",
+  "vaultBalance": 500,
+  "updatedAt": "2026-08-17T14:29:25.696Z"
+}
