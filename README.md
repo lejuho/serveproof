@@ -19,7 +19,8 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 
 ## 주요 기능
 
-- 이메일 OTP 로그인, JWT access token, refresh token rotation 및 재사용 차단
+- 이메일 OTP 로그인, 자동 세션 복원, 서버 로그아웃, JWT access token과 refresh token rotation 및 재사용 차단
+- 한 계정에서 노동자 화면과 사업장 관리 화면을 함께 사용하며, 탭별 화면 모드와 저장된 복수 계정 전환 지원
 - 조직·사업장 단위 OWNER/MANAGER/PAYROLL_ADMIN/VIEWER RBAC와 tenant isolation
 - CSV 및 Square Sandbox의 Payment, Order, Timecard, 현금 팁 수집
 - 외부 직원 ID 매핑, source hash 기반 멱등 evidence 저장
@@ -195,7 +196,7 @@ pnpm dev:web
 - API: `http://localhost:3001`
 - Health: `http://localhost:3001/health`
 
-`APP_ENV=local`에서는 OTP 요청 응답과 로그인 화면에 개발용 코드가 표시됩니다. `manager@demo.serveproof.local`로 로그인하면 사업장 대시보드로 이동합니다.
+`APP_ENV=local`에서는 OTP 요청 응답과 로그인 화면에 개발용 코드가 표시됩니다. `manager@demo.serveproof.local`로 로그인하면 기본적으로 사업장 대시보드로 이동합니다. 이 계정은 노동자 자격과 `Demo Diner`의 OWNER 멤버십을 함께 가지므로 상단의 `노동자로 보기`와 `사업장 관리자로 보기`를 사용해 두 화면을 전환할 수 있습니다. 화면 모드는 탭별로 저장되므로 한 탭에는 사업장 대시보드, 다른 탭에는 노동자 화면을 동시에 열어둘 수 있습니다.
 
 ### 5. CSV 데모
 
@@ -446,7 +447,8 @@ curl https://serveproofapi-production.up.railway.app/health
 - `.env`, provider token, OTP, refresh token, wallet private key를 커밋하거나 로그에 남기지 않습니다.
 - Square token은 DB에 AES-256-GCM ciphertext로만 저장합니다.
 - backend는 venue wallet private key를 보관하지 않고 unsigned transaction만 생성합니다.
-- 모든 venue-scoped API는 JWT 인증 후 organization membership과 role을 검사합니다.
+- 계정은 한 사람의 신원을 나타냅니다. 노동자 자격과 organization membership은 서로 배타적인 전역 역할로 취급하지 않습니다.
+- 모든 venue-scoped API는 JWT 인증 후 organization membership과 organization role을 검사합니다.
 - 승인된 배분과 지급 원본을 삭제하거나 덮어쓰지 않습니다.
 - 운영 배포 전 `APP_ENV=local`을 반드시 제거하고 외부 secret manager와 private object storage를 사용합니다.
 

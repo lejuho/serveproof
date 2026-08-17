@@ -19,7 +19,8 @@ The next sequence is **staging seed → Worker operations check → deployment s
 
 ## Key features
 
-- Email OTP login, JWT access tokens, refresh-token rotation, and reuse prevention
+- Email OTP login, automatic session restoration, server-side logout, JWT access tokens, refresh-token rotation, and reuse prevention
+- Worker and venue-management views under one account, with per-tab view modes and switching among multiple saved accounts
 - Organization- and venue-level OWNER/MANAGER/PAYROLL_ADMIN/VIEWER RBAC with tenant isolation
 - Payment, Order, Timecard, and cash-tip ingestion from CSV and Square Sandbox
 - External worker ID mapping and source-hash-based idempotent evidence storage
@@ -195,7 +196,7 @@ Endpoints:
 - API: `http://localhost:3001`
 - Health: `http://localhost:3001/health`
 
-When `APP_ENV=local`, the OTP response and login screen expose a development code. Sign in as `manager@demo.serveproof.local` to open the venue dashboard.
+When `APP_ENV=local`, the OTP response and login screen expose a development code. Signing in as `manager@demo.serveproof.local` opens the venue dashboard by default. This account has both a worker profile and an OWNER membership in `Demo Diner`, so use `Worker view` and `Venue manager view` in the header to switch between the two. The selected view is stored per tab, allowing the venue dashboard and worker screen to remain open at the same time.
 
 ### 5. CSV demo
 
@@ -444,7 +445,8 @@ Then run the smoke test in this order:
 - Never commit or log `.env`, provider tokens, OTPs, refresh tokens, or wallet private keys.
 - Square tokens are stored in the database only as AES-256-GCM ciphertext.
 - The backend never stores venue wallet private keys and creates only unsigned transactions.
-- Every venue-scoped API validates organization membership and role after JWT authentication.
+- An account represents one person's identity. Worker capability and organization membership are not mutually exclusive global roles.
+- Every venue-scoped API validates organization membership and organization role after JWT authentication.
 - Never delete or overwrite approved allocations or original payment records.
 - Remove `APP_ENV=local` before production deployment and use an external secret manager and private object storage.
 
