@@ -723,6 +723,17 @@ export default function DashboardPage() {
       refreshSettlementClose();
     });
 
+  const autoAssignRails = () =>
+    run(async () => {
+      if (!batch) return;
+      const result = await api<{ assigned: number; batch: Batch }>(
+        `/allocation-batches/${batch.id}/auto-assign-rails`,
+        { method: "POST", body: {} },
+      );
+      setBatch(result.batch);
+      refreshSettlementClose();
+    });
+
   const exportPayroll = () =>
     run(async () => {
       const result = await api<{ filename: string; csv: string }>(
@@ -747,6 +758,16 @@ export default function DashboardPage() {
     });
 
   const payable = batch && ["PAYABLE", "PARTIALLY_PAID", "PAID"].includes(batch.status);
+  const hasUnassignedRails = !!batch?.allocations.some(
+    (a) => a.worker && !a.plannedPayoutRail && a.payoutStatus !== "PAID",
+  );
+  const railAssignButton = hasUnassignedRails && (
+    <Button size="sm" variant="secondary" onClick={autoAssignRails} disabled={busy}>
+      {locale === "ko"
+        ? "미지정 경로 일괄 지정 — 지갑 연결 직원은 USDC, 그 외 PAYROLL"
+        : "Assign missing routes — wallet-ready workers to USDC, others to PAYROLL"}
+    </Button>
+  );
 
   if (initialLoading) {
     return (
@@ -1489,6 +1510,9 @@ export default function DashboardPage() {
                   </ul>
                 )}
 
+                {!payable && batch.allocations.length > 0 && railAssignButton && (
+                  <div className="mb-3">{railAssignButton}</div>
+                )}
                 {!payable && batch.allocations.length > 0 && (
                   <table className="w-full">
                     <thead>
@@ -1695,6 +1719,7 @@ export default function DashboardPage() {
                   </span>
                 )}
               </div>
+              {railAssignButton && <div className="mt-3">{railAssignButton}</div>}
               <table className="mt-4 w-full">
                 <thead>
                   <tr>

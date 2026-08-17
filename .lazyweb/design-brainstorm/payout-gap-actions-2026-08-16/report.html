@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ServeProof PAYOUT_GAP Action UX</title>
+  <style>
+    :root{--ink:#18181b;--muted:#71717a;--line:#e4e4e7;--soft:#fafafa;--green:#047857;--green2:#ecfdf5;--amber:#b45309;--amber2:#fffbeb;--blue:#1d4ed8;--blue2:#eff6ff}
+    *{box-sizing:border-box} body{margin:0;background:#f4f4f5;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Noto Sans KR",sans-serif;line-height:1.55}
+    main{max-width:1120px;margin:0 auto;padding:56px 24px 96px}.hero{padding:40px;border:1px solid var(--line);border-radius:28px;background:#fff}
+    .eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;color:var(--green);text-transform:uppercase}.hero h1{font-size:42px;line-height:1.15;margin:12px 0}.hero p{max-width:760px;color:var(--muted);font-size:18px}.verdict{margin-top:26px;padding:20px;border-left:5px solid var(--green);background:var(--green2);border-radius:12px;font-size:18px}
+    section{margin-top:44px} h2{font-size:27px;margin:0 0 16px} h3{font-size:18px;margin:0 0 8px}.sub{color:var(--muted);max-width:800px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{border:1px solid var(--line);border-radius:20px;background:#fff;padding:24px}.rank{display:inline-flex;width:28px;height:28px;border-radius:50%;align-items:center;justify-content:center;background:var(--ink);color:#fff;font-weight:800;margin-right:8px}.tag{display:inline-block;border-radius:999px;padding:4px 9px;background:#f4f4f5;color:#52525b;font-size:12px;font-weight:700}.good{background:var(--green2);color:var(--green)}
+    img{display:block;width:100%;border:1px solid var(--line);border-radius:14px;background:#fff}.caption{font-size:13px;color:var(--muted);margin-top:8px}.wire{white-space:pre-wrap;background:#18181b;color:#f4f4f5;padding:22px;border-radius:16px;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto}.flow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.step{background:#fff;border:1px solid var(--line);border-radius:999px;padding:9px 13px;font-size:13px;font-weight:700}.arrow{color:#a1a1aa}.state{border-left:4px solid var(--blue);background:var(--blue2)}
+    table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}th,td{text-align:left;padding:13px 15px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}th{background:var(--soft)}tr:last-child td{border-bottom:0}code{background:#f4f4f5;border-radius:6px;padding:2px 5px;font-size:.9em}ul{padding-left:20px}.refs{grid-template-columns:repeat(3,minmax(0,1fr))}.note{color:var(--amber);background:var(--amber2);border:1px solid #fde68a;border-radius:14px;padding:16px}
+    @media(max-width:760px){.hero{padding:26px}.hero h1{font-size:32px}.grid,.refs{grid-template-columns:1fr}main{padding:24px 14px 64px}}
+  </style>
+</head>
+<body><main>
+  <header class="hero">
+    <div class="eyebrow">ServeProof · UX brainstorm · 2026-08-16</div>
+    <h1>PAYOUT_GAP을<br/>“해결 가능한 일”로 바꾸기</h1>
+    <p>노동자에게 불일치를 보여주는 데서 끝내지 않고, 사업장 급여 담당자에게 확인을 요청하고 답변과 지급 완료까지 한 화면에서 추적하는 흐름.</p>
+    <div class="verdict"><strong>TL;DR</strong> — CTA는 <strong>“사업장에 지급 확인 요청”</strong>이 가장 자연스럽다. 단순 이메일 전송이 아니라 ServeProof 안에 요청 레코드를 만들고, 이메일은 그 요청을 알리는 전달 수단으로만 사용한다.</div>
+  </header>
+
+  <section>
+    <h2>현재 상태</h2>
+    <p class="sub">경고는 유형과 설명만 보여준다. 사업장, 날짜, 금액, 대기 기간, 다음 행동이 없어 노동자가 화면을 본 뒤 다시 전화·문자·이메일로 문제를 풀어야 한다.</p>
+    <div class="card"><img src="references/current-alert.png" alt="현재 PAYOUT_GAP 알림 카드"/><div class="caption">현재 ServeProof: 감지는 하지만 해결 루프는 열리지 않는다.</div></div>
+  </section>
+
+  <section>
+    <h2>추천안: 요청 → 확인 → 해결</h2>
+    <div class="flow"><span class="step">지급 대기 감지</span><span class="arrow">→</span><span class="step">확인 요청 보냄</span><span class="arrow">→</span><span class="step">사업장 확인 중</span><span class="arrow">→</span><span class="step">지급됨 / 설명 받음</span></div>
+    <div class="wire" style="margin-top:16px">지급 확인이 필요해요                                      $118.00
+Demo Diner · 8월 15일 근무 · 승인 후 3일째
+
+승인된 팁 배분이 아직 지급 기록과 연결되지 않았습니다.
+사업장 급여 담당자에게 금액과 근무일만 포함한 확인 요청을 보낼 수 있어요.
+
+[ 사업장에 지급 확인 요청 ]     [ 시프트 상세 보기 ]</div>
+    <p class="note"><strong>문구 원칙:</strong> “미지급”, “체불”을 시스템이 단정하지 않는다. 지급 데이터 지연이나 매칭 실패 가능성이 있으므로 <strong>“지급 기록이 아직 확인되지 않음”</strong>을 기본 표현으로 쓴다.</p>
+  </section>
+
+  <section>
+    <h2>아이디어 우선순위</h2>
+    <div class="grid">
+      <article class="card"><h3><span class="rank">1</span>지급 확인 요청 <span class="tag good">MVP</span></h3><p>버튼을 누르면 사업장·근무일·승인 금액이 미리 채워진 확인 모달을 연다. 노동자는 선택 메모만 더하고 발송한다.</p><div class="wire">받는 곳  Demo Diner 급여 담당자
+근무일   2026-08-15
+승인액   $118.00
+메모     [선택]
+
+[ 요청 보내기 ]</div></article>
+      <article class="card state"><h3><span class="rank">2</span>요청 상태 추적 <span class="tag good">MVP</span></h3><p>발송 직후 CTA를 없애고 “8월 16일 요청 보냄”과 다음 상태를 보여준다. 반복 클릭과 불안을 동시에 줄인다.</p><ul><li><code>OPEN</code> 요청 보냄</li><li><code>ACKNOWLEDGED</code> 사업장 확인 중</li><li><code>RESOLVED</code> 지급 확인됨</li><li><code>CLOSED_WITH_NOTE</code> 설명과 함께 종료</li></ul></article>
+      <article class="card"><h3><span class="rank">3</span>사업장 액션 인박스</h3><p>매니저 화면에는 일반 알림이 아니라 담당자·기한·대화가 있는 작업으로 들어간다. “지급 처리”, “이미 지급됨”, “정보 요청” 중 하나를 선택한다.</p></article>
+      <article class="card"><h3><span class="rank">4</span>단계적 재알림</h3><p>첫 요청 이후 즉시 재전송하지 않는다. 48–72시간 쿨다운 뒤에만 “한 번 더 알림”을 제공하고, 응답이 없으면 요청 타임라인을 내려받게 한다.</p></article>
+    </div>
+  </section>
+
+  <section>
+    <h2>알림 상태별 CTA</h2>
+    <table><thead><tr><th>현재 상태</th><th>노동자에게 보이는 주 CTA</th><th>보조 행동</th></tr></thead><tbody>
+      <tr><td>승인 직후, 정상 처리 유예기간</td><td>지급 예정 보기</td><td>시프트 상세</td></tr>
+      <tr><td>유예기간 경과, 요청 없음</td><td>사업장에 지급 확인 요청</td><td>시프트 상세</td></tr>
+      <tr><td>요청 보냄</td><td>요청 상태 보기</td><td>요청 내용 복사</td></tr>
+      <tr><td>사업장 확인 중</td><td>답변 보기</td><td>추가 정보 보내기</td></tr>
+      <tr><td>지급 레코드 생성/전송 중</td><td>지급 상태 보기</td><td>거래 상세</td></tr>
+      <tr><td>지급 완료</td><td>지급 내역 보기</td><td>요청 닫기</td></tr>
+    </tbody></table>
+  </section>
+
+  <section>
+    <h2>교차 도메인에서 가져올 패턴</h2>
+    <div class="grid refs">
+      <article class="card"><img src="references/deel-progress.png" alt="Deel payment progress"/><h3>결제 진행 트래커</h3><p>결제 제품처럼 “무슨 일이 일어났고 다음 단계가 무엇인지”를 순서로 보여준다. PAYOUT_GAP에도 감지·요청·확인·지급 단계를 적용한다.</p></article>
+      <article class="card"><img src="references/front-thread.png" alt="Front support thread"/><h3>지원 티켓의 대화</h3><p>이메일을 보내고 끝내지 않고 요청 내용, 답변, 상태 변경을 하나의 스레드에 쌓는다. 담당자가 바뀌어도 맥락이 남는다.</p></article>
+      <article class="card"><img src="references/airbnb-timeline.png" alt="Airbnb refund status timeline"/><h3>환불 상태 타임라인</h3><p>금액과 이벤트 타임라인을 한 화면에 묶는다. 노동자가 “얼마가, 언제부터, 어디에서 멈췄는지” 바로 이해하게 한다.</p></article>
+    </div>
+  </section>
+
+  <section>
+    <h2>구현 시 중요한 데이터 설계</h2>
+    <div class="card">
+      <ul>
+        <li><strong>알림 ID에 요청을 직접 묶지 않는다.</strong> 현재 재계산은 미해결 경고를 삭제 후 재생성하므로 ID가 안정적이지 않다.</li>
+        <li>요청 키는 최소 <code>workerId + venueId + shiftId + type</code>. 열린 요청이 있으면 새 요청 대신 기존 상태를 반환한다.</li>
+        <li>수신자는 임의 이메일이 아니라 해당 사업장의 <code>OWNER / MANAGER / PAYROLL_ADMIN</code> 멤버다.</li>
+        <li>이메일에는 전체 소득 보고서를 넣지 않고 사업장명, 근무일, 승인 금액, 요청 링크만 넣는다.</li>
+        <li>발송·확인·답변·해결 이벤트를 감사 로그로 남긴다. 이메일 실패가 요청 레코드 생성을 되돌리지 않도록 재시도 가능한 전달 상태를 둔다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>와일드 카드: 조용한 합의 창</h2>
+    <p class="sub">노동자가 사업장에 요청하기 전에 24시간 “조용히 기다리기”를 선택하면, ServeProof가 예정 지급 데이터가 들어오는지 감시한다. 들어오면 알림 없이 자동 해결하고, 안 들어오면 요청 버튼을 다시 강조한다. 데이터 동기화 지연으로 생긴 불필요한 긴장을 줄일 수 있다.</p>
+  </section>
+
+  <section>
+    <h2>결론</h2>
+    <div class="verdict">첫 버전은 <strong>알림 카드 상세화 + 지급 확인 요청 + 발송 상태 + 사업장 인박스</strong>까지가 적절하다. 이메일은 채널이고, 제품의 핵심은 양쪽이 같은 요청 상태와 타임라인을 보는 것이다.</div>
+    <p class="caption">참고 화면은 Lazyweb 검색 결과를 로컬에 저장해 사용했다. 전체 선별 자료: https://www.lazyweb.com/agentic-search/4b888e60-8966-42e5-af45-ea819b6d9a2a</p>
+  </section>
+</main></body></html>

@@ -64,6 +64,14 @@ export class AllocationsController {
     return this.allocations.reject(id, user.id, reason);
   }
 
+  // 미지정 경로만 채우는 일괄 지정: 지갑 연결 직원 → USDC, 그 외 → PAYROLL
+  @Post(":id/auto-assign-rails")
+  async autoAssignRails(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    const batch = await this.allocations.getBatch(id);
+    await this.access.assertVenueRole(user.id, batch.venueId, VENUE_MANAGE_ROLES);
+    return this.allocations.autoAssignRails(id, user.id);
+  }
+
   @Patch("allocations/:allocationId/planned-rail")
   async setPlannedRail(
     @CurrentUser() user: AuthenticatedUser,

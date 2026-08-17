@@ -271,6 +271,67 @@ export class AllocationsService {
     return updated;
   }
 
+  /**
+   * Fills ONLY unassigned planned rails: workers with an active default
+   * wallet get USDC, the rest PAYROLL. Explicit choices, paid rows, and held
+   * allocations are never touched — the manager invokes this; the system
+   * still never guesses on its own.
+   */
+  async autoAssignRails(batchId: string, actorUserId: string) {
+    const batch = await this.prisma.allocationBatch.findUnique({
+      where: { id: batchId },
+      include: {
+        allocations: { include: { worker: { include: { defaultWallet: true } } } },
+      },
+    });
+    if (!batch) throw new NotFoundException(`Batch ${batchId} not found`);
+
+    const assignments = batch.allocations
+      .filter(
+        (allocation) =>
+          allocation.workerId &&
+          !allocation.plannedPayoutRail &&
+          allocation.payoutStatus !== "PAID",
+      )
+      .map((allocation) => ({
+        id: allocation.id,
+        rail:
+          allocation.worker?.defaultWallet?.status === "ACTIVE"
+            ? ("USDC" as const)
+            : ("PAYROLL" as const),
+      }));
+    const usdc = assignments.filter((assignment) => assignment.rail === "USDC").length;
+    const payroll = assignments.length - usdc;
+
+    if (assignments.length > 0) {
+      await this.prisma.$transaction([
+        ...assignments.map((assignment) =>
+          this.prisma.workerAllocation.update({
+            where: { id: assignment.id },
+            data: { plannedPayoutRail: assignment.rail },
+          }),
+        ),
+        this.prisma.auditLog.create({
+          data: {
+            venueId: batch.venueId,
+            actorUserId,
+            action: "ALLOCATION_RAILS_AUTO_ASSIGNED",
+            entityType: "AllocationBatch",
+            entityId: batchId,
+            detail: { assigned: assignments.length, usdc, payroll },
+          },
+        }),
+      ]);
+    }
+
+    return {
+      assigned: assignments.length,
+      usdc,
+      payroll,
+      batch: await this.getBatch(batchId),
+    };
+  }
+
   async setPlannedRail(allocationId: string, rail: SettlementRail, actorUserId: string) {
     const allocation = await this.prisma.workerAllocation.findUnique({
       where: { id: allocationId },
