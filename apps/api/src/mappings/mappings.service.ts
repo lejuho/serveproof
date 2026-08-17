@@ -43,7 +43,10 @@ export class MappingsService {
 
   /**
    * Spec §22 — POST /worker-mappings. The worker can be referenced by id or,
-   * like org member invites, by account email (they must have logged in once).
+   * like org member invites, by account email. An email without an account is
+   * onboarded on the spot: since first OTP login doubles as signup, we
+   * pre-create the user in the same shape so the invite email's login link
+   * lands the worker in this account with the request already waiting.
    */
   async createMapping(input: {
     workerId?: string;
@@ -53,17 +56,34 @@ export class MappingsService {
     externalWorkerId: string;
   }) {
     let workerId = input.workerId;
+    let accountCreated = false;
     if (!workerId) {
-      const user = await this.prisma.user.findUnique({
-        where: { email: (input.workerEmail ?? "").toLowerCase() },
+      const email = (input.workerEmail ?? "").toLowerCase();
+      let user = await this.prisma.user.findUnique({
+        where: { email },
         include: { worker: true },
       });
-      if (!user?.worker) {
-        throw new NotFoundException(
-          `No worker account for ${input.workerEmail}; they must log in once first`,
-        );
+      if (!user) {
+        user = await this.prisma.user.create({
+          data: {
+            authUserId: `otp:${email}`,
+            email,
+            displayName: email.split("@")[0] ?? email,
+            role: "WORKER",
+            worker: { create: {} },
+          },
+          include: { worker: true },
+        });
+        accountCreated = true;
       }
-      workerId = user.worker.id;
+      const worker =
+        user.worker ??
+        (await this.prisma.worker.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: { userId: user.id },
+        }));
+      workerId = worker.id;
     }
     const worker = await this.prisma.worker.findUnique({ where: { id: workerId } });
     if (!worker) throw new NotFoundException(`Worker ${workerId} not found`);
@@ -107,13 +127,23 @@ export class MappingsService {
           `[ServeProof] ${venue?.name ?? "A venue"} sent an account connection request`,
           [
             `${venue?.name ?? "사업장"}에서 ${input.provider} 직원 ID ${input.externalWorkerId}를 이 ServeProof 계정에 연결해 달라고 요청했습니다.`,
+            ...(accountCreated
+              ? [
+                  "아직 ServeProof를 써본 적이 없어도 괜찮습니다. 아래 링크에서 이 이메일 주소로 로그인(인증 코드 입력)하면 계정이 바로 준비되고, 연결 요청을 확인할 수 있습니다.",
+                ]
+              : []),
             "본인의 근무 계정이 맞는 경우 ServeProof의 근무 탭에서 수락해 주세요.",
             "본인이 아니라면 거절하세요. 수락 전에는 근무·소득 기록이 계정에 연결되지 않습니다.",
             "",
             `${venue?.name ?? "A venue"} asked to connect ${input.provider} worker ID ${input.externalWorkerId} to this ServeProof account.`,
+            ...(accountCreated
+              ? [
+                  "New to ServeProof? Sign in with this email address at the link below — your account is ready, with the request waiting.",
+                ]
+              : []),
             "Accept it from the Work tab only if this is your workplace identity. Otherwise, reject it.",
             "",
-            `${origin}/me`,
+            accountCreated ? `${origin}/login` : `${origin}/me`,
           ].join("\n"),
         );
         invitationEmailSent = true;
@@ -124,7 +154,7 @@ export class MappingsService {
       }
     }
 
-    return { ...mapping, invitationEmailSent };
+    return { ...mapping, invitationEmailSent, accountCreated };
   }
 
   /**

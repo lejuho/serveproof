@@ -197,6 +197,9 @@ export default function DashboardPage() {
   const [csvText, setCsvText] = useState("");
   const [mappingEmails, setMappingEmails] = useState<Record<string, string>>({});
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteProvider, setInviteProvider] = useState("");
+  const [inviteExternalId, setInviteExternalId] = useState("");
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
   const [unmapped, setUnmapped] = useState<UnmappedResponse | null>(null);
   const [businessDate, setBusinessDate] = useState(DEFAULT_BUSINESS_DATE);
@@ -440,26 +443,56 @@ export default function DashboardPage() {
       refreshUnmapped();
     });
 
-  const requestWorkerMapping = (provider: string, externalWorkerId: string) =>
-    run(async () => {
-      const key = `${provider}:${externalWorkerId}`;
-      const workerEmail = mappingEmails[key]?.trim();
-      if (!workerEmail) return;
-      const result = await api<{ invitationEmailSent: boolean }>("/worker-mappings", {
+  const sendMappingRequest = async (
+    provider: string,
+    externalWorkerId: string,
+    workerEmail: string,
+  ) => {
+    const result = await api<{ invitationEmailSent: boolean; accountCreated: boolean }>(
+      "/worker-mappings",
+      {
         method: "POST",
         body: { venueId, provider, externalWorkerId, workerEmail },
-      });
-      setMappingEmails((current) => ({ ...current, [key]: "" }));
-      setMappingMessage(
-        result.invitationEmailSent
+      },
+    );
+    setMappingMessage(
+      result.accountCreated
+        ? result.invitationEmailSent
+          ? locale === "ko"
+            ? `${workerEmail}은 아직 계정이 없어 새로 만들어 두고 로그인 안내를 보냈습니다. 직원이 첫 로그인 후 수락하면 연결됩니다.`
+            : `${workerEmail} had no account yet — one was created and a sign-in email was sent. The connection completes once they log in and accept.`
+          : locale === "ko"
+            ? `${workerEmail} 계정을 새로 만들어 연결 요청을 걸어두었습니다. 직원에게 이 이메일로 로그인해 수락하라고 알려주세요.`
+            : `An account was created for ${workerEmail} with the request waiting. Ask them to sign in with this email and accept.`
+        : result.invitationEmailSent
           ? locale === "ko"
             ? `${workerEmail}로 연결 요청을 보냈습니다.`
             : `Connection request sent to ${workerEmail}.`
           : locale === "ko"
             ? "연결 요청을 만들었습니다. 직원이 ServeProof 근무 탭에서 수락해야 합니다."
             : "Connection request created. The worker must accept it from their Work tab.",
-      );
-      refreshUnmapped();
+    );
+    refreshUnmapped();
+  };
+
+  const requestWorkerMapping = (provider: string, externalWorkerId: string) =>
+    run(async () => {
+      const key = `${provider}:${externalWorkerId}`;
+      const workerEmail = mappingEmails[key]?.trim();
+      if (!workerEmail) return;
+      await sendMappingRequest(provider, externalWorkerId, workerEmail);
+      setMappingEmails((current) => ({ ...current, [key]: "" }));
+    });
+
+  const inviteNewWorker = () =>
+    run(async () => {
+      const workerEmail = inviteEmail.trim();
+      const provider = inviteProvider.trim();
+      const externalWorkerId = inviteExternalId.trim();
+      if (!workerEmail || !provider || !externalWorkerId) return;
+      await sendMappingRequest(provider, externalWorkerId, workerEmail);
+      setInviteEmail("");
+      setInviteExternalId("");
     });
 
   const calculate = () =>
@@ -976,6 +1009,76 @@ export default function DashboardPage() {
                 }
               >
                 {mappingMessage && <Callout tone="emerald">{mappingMessage}</Callout>}
+                <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                  <p className="text-sm font-semibold text-zinc-900">
+                    {locale === "ko" ? "새 직원 연결" : "Connect a new hire"}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-600">
+                    {locale === "ko"
+                      ? "근무 데이터가 들어오기 전에도 고용 시점에 바로 연결을 시작할 수 있습니다. 계정이 없는 이메일이면 자동으로 만들어지고 로그인 안내 메일이 발송됩니다."
+                      : "Start the connection at hiring time, before any work data arrives. If the email has no account yet, one is created and a sign-in email goes out."}
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[1.3fr_1fr_1fr_auto] md:items-end">
+                    <label className="block text-xs font-medium text-zinc-600">
+                      {locale === "ko" ? "직원 이메일" : "Worker email"}
+                      <input
+                        type="email"
+                        className={`${inputClass} mt-1`}
+                        value={inviteEmail}
+                        onChange={(event) => setInviteEmail(event.target.value)}
+                        placeholder="name@example.com"
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-zinc-600">
+                      {locale === "ko" ? "데이터 소스 (POS)" : "Data source (POS)"}
+                      <input
+                        className={`${inputClass} mt-1`}
+                        list="invite-provider-options"
+                        value={inviteProvider}
+                        onChange={(event) => setInviteProvider(event.target.value)}
+                        placeholder="toast_mock"
+                      />
+                      <datalist id="invite-provider-options">
+                        {[
+                          ...new Set([
+                            ...(unmapped?.unmappedShiftWorkers.map((w) => w.provider) ?? []),
+                            ...(unmapped?.pendingMappings.map((m) => m.provider) ?? []),
+                            "toast_mock",
+                            "square",
+                          ]),
+                        ].map((provider) => (
+                          <option key={provider} value={provider} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label className="block text-xs font-medium text-zinc-600">
+                      {locale === "ko" ? "외부 직원 ID" : "External worker ID"}
+                      <input
+                        className={`${inputClass} mt-1`}
+                        value={inviteExternalId}
+                        onChange={(event) => setInviteExternalId(event.target.value)}
+                        placeholder="worker_001"
+                      />
+                    </label>
+                    <Button
+                      variant="dark"
+                      onClick={inviteNewWorker}
+                      disabled={
+                        busy ||
+                        !inviteEmail.trim() ||
+                        !inviteProvider.trim() ||
+                        !inviteExternalId.trim()
+                      }
+                    >
+                      {locale === "ko" ? "연결 요청" : "Send request"}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {locale === "ko"
+                      ? "데이터 소스와 외부 직원 ID는 POS/CSV에서 쓰는 값과 같아야 이후 근무 기록이 자동으로 이 직원에게 연결됩니다."
+                      : "Use the same provider and worker ID as your POS/CSV so future work records attach to this worker automatically."}
+                  </p>
+                </div>
                 {unmapped &&
                 unmapped.unmappedShiftWorkers.length === 0 &&
                 unmapped.pendingMappings.length === 0 ? (
@@ -1035,10 +1138,10 @@ export default function DashboardPage() {
                             );
                           })}
                         </ul>
-                        <p className="mt-2 text-xs text-zinc-400">
+                        <p className="mt-2 text-xs text-zinc-500">
                           {locale === "ko"
-                            ? "직원은 이 이메일로 ServeProof에 한 번 로그인해 노동자 계정을 만든 상태여야 합니다."
-                            : "The worker must have signed in to ServeProof once with this email."}
+                            ? "계정이 없는 이메일이면 자동으로 만들어지고, 직원이 이 이메일로 로그인해 수락하면 연결됩니다."
+                            : "If the email has no account yet, one is created automatically; the worker signs in with it and accepts."}
                         </p>
                       </div>
                     )}
