@@ -69,20 +69,49 @@ export class OrganizationsService {
     });
   }
 
-  /** Spec §22 — POST /venues */
-  createVenue(input: {
-    organizationId: string;
-    name: string;
-    timezone: string;
-    externalIds?: Record<string, string>;
-  }) {
-    return this.prisma.venue.create({
-      data: {
-        organizationId: input.organizationId,
-        name: input.name,
-        timezone: input.timezone,
-        externalIds: input.externalIds ?? {},
-      },
+  /**
+   * Spec §22 — POST /venues. A default allocation policy is created with the
+   * venue so the first batch calculation works without a separate setup step.
+   */
+  async createVenue(
+    creatorUserId: string,
+    input: {
+      organizationId: string;
+      name: string;
+      timezone: string;
+      externalIds?: Record<string, string>;
+    },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const venue = await tx.venue.create({
+        data: {
+          organizationId: input.organizationId,
+          name: input.name,
+          timezone: input.timezone,
+          externalIds: input.externalIds ?? {},
+        },
+      });
+      await tx.allocationPolicy.create({
+        data: {
+          venueId: venue.id,
+          version: 1,
+          status: "ACTIVE",
+          allocationType: "ROLE_WEIGHTED_HOURS",
+          roleWeights: { SERVER: 1.0, BUSSER: 0.7, BARTENDER: 1.0 },
+          poolInclusion: {
+            CARD_TIP: true,
+            QR_TIP: true,
+            CASH_TIP: false,
+            AUTOMATIC_GRATUITY: false,
+            SERVICE_CHARGE: false,
+          },
+          excludedRoles: ["MANAGER", "SUPERVISOR"],
+          tipOutRules: [],
+          effectiveFrom: new Date(),
+          createdBy: creatorUserId,
+        },
+      });
+      return venue;
     });
   }
 

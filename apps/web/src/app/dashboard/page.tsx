@@ -204,6 +204,14 @@ export default function DashboardPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteProvider, setInviteProvider] = useState("");
   const [inviteExternalId, setInviteExternalId] = useState("");
+  const [setupOrgName, setSetupOrgName] = useState("");
+  const [setupVenueName, setSetupVenueName] = useState("");
+  const [setupTimezone, setSetupTimezone] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+  );
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState("MANAGER");
+  const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
   const [unmapped, setUnmapped] = useState<UnmappedResponse | null>(null);
   const [businessDate, setBusinessDate] = useState(DEFAULT_BUSINESS_DATE);
@@ -398,6 +406,48 @@ export default function DashboardPage() {
       setBusy(false);
     }
   }
+
+  const createFirstVenue = () =>
+    run(async () => {
+      const orgName = setupOrgName.trim();
+      const venueName = setupVenueName.trim();
+      const timezone = setupTimezone.trim();
+      if (!venueName || !timezone) return;
+      // 기존 조직이 있으면 사업장만 추가하고, 없으면 조직부터 만든다
+      let organizationId = orgs[0]?.id;
+      if (!organizationId) {
+        if (!orgName) return;
+        const org = await api<{ id: string }>("/organizations", {
+          method: "POST",
+          body: { legalName: orgName, displayName: orgName, country: "US", timezone },
+        });
+        organizationId = org.id;
+      }
+      await api("/venues", {
+        method: "POST",
+        body: { organizationId, name: venueName, timezone },
+      });
+      await invalidateApiQueries(queryClient, ["/organizations/mine"]);
+      // 세션 모드(staff)와 초기 로딩 흐름을 다시 타도록 전체 리로드
+      window.location.reload();
+    });
+
+  const inviteOrgMember = () =>
+    run(async () => {
+      const organizationId = orgs[0]?.id;
+      const email = memberEmail.trim();
+      if (!organizationId || !email) return;
+      await api(`/organizations/${organizationId}/members`, {
+        method: "POST",
+        body: { email, role: memberRole },
+      });
+      setMemberEmail("");
+      setMemberMessage(
+        locale === "ko"
+          ? `${email}을(를) ${memberRole} 역할로 추가했습니다.`
+          : `${email} was added as ${memberRole}.`,
+      );
+    });
 
   const refreshBatch = useCallback(async () => {
     if (!batch) return;
@@ -686,6 +736,115 @@ export default function DashboardPage() {
   if (initialLoading) {
     return (
       <LoadingState fullScreen title={t("loading.dashboard")} description={t("loading.wait")} />
+    );
+  }
+
+  if (!orgs.some((org) => org.venues.length > 0)) {
+    return (
+      <AppShell
+        title={locale === "ko" ? "사업장 관리" : "Venue Dashboard"}
+        subtitle={
+          locale === "ko"
+            ? "아직 등록된 사업장이 없습니다."
+            : "No venue is registered for this account yet."
+        }
+        right={
+          <span className="flex items-center gap-4">
+            <a
+              href="/login?switch=1"
+              className="text-sm font-medium text-zinc-500 hover:text-zinc-700"
+            >
+              {t("auth.switch")}
+            </a>
+            <button
+              onClick={async () => {
+                await logoutSession();
+                router.push("/login?switch=1");
+              }}
+              className="text-sm font-medium text-zinc-500 hover:text-zinc-700"
+            >
+              {t("logout")}
+            </button>
+          </span>
+        }
+      >
+        {error && <Callout tone="red">{error}</Callout>}
+        <Card
+          title={locale === "ko" ? "새 사업장 열기" : "Open your venue"}
+          description={
+            locale === "ko"
+              ? "조직과 사업장을 만들면 기본 배분 정책(SERVER 1.0 · BUSSER 0.7 · BARTENDER 1.0)이 함께 준비되어 바로 팁 증빙을 모으고 배분을 계산할 수 있습니다."
+              : "Creating your organization and venue also sets up a default allocation policy (SERVER 1.0 · BUSSER 0.7 · BARTENDER 1.0), so you can collect tip evidence and calculate allocations right away."
+          }
+        >
+          <div className="grid max-w-xl gap-4">
+            {!orgs[0] && (
+              <label className="block text-sm font-medium text-zinc-700">
+                {locale === "ko" ? "조직(브랜드) 이름" : "Organization (brand) name"}
+                <input
+                  className={`${inputClass} mt-1.5`}
+                  value={setupOrgName}
+                  onChange={(event) => setSetupOrgName(event.target.value)}
+                  placeholder={locale === "ko" ? "예: 한강 다이닝 그룹" : "e.g. Riverside Dining Group"}
+                />
+              </label>
+            )}
+            <label className="block text-sm font-medium text-zinc-700">
+              {locale === "ko" ? "사업장 이름" : "Venue name"}
+              <input
+                className={`${inputClass} mt-1.5`}
+                value={setupVenueName}
+                onChange={(event) => setSetupVenueName(event.target.value)}
+                placeholder={locale === "ko" ? "예: 한강 다이너 성수점" : "e.g. Riverside Diner"}
+              />
+            </label>
+            <label className="block text-sm font-medium text-zinc-700">
+              {locale === "ko" ? "영업 타임존" : "Business timezone"}
+              <input
+                className={`${inputClass} mt-1.5`}
+                list="setup-timezone-options"
+                value={setupTimezone}
+                onChange={(event) => setSetupTimezone(event.target.value)}
+              />
+              <datalist id="setup-timezone-options">
+                {[
+                  "America/New_York",
+                  "America/Chicago",
+                  "America/Denver",
+                  "America/Los_Angeles",
+                  "Asia/Seoul",
+                  "UTC",
+                ].map((timezone) => (
+                  <option key={timezone} value={timezone} />
+                ))}
+              </datalist>
+              <span className="mt-1.5 block text-xs text-zinc-500">
+                {locale === "ko"
+                  ? "영업일(정산 날짜)이 이 타임존 기준으로 계산됩니다."
+                  : "Business dates for settlement are computed in this timezone."}
+              </span>
+            </label>
+            <div>
+              <Button
+                onClick={createFirstVenue}
+                disabled={
+                  busy ||
+                  !setupVenueName.trim() ||
+                  !setupTimezone.trim() ||
+                  (!orgs[0] && !setupOrgName.trim())
+                }
+              >
+                {locale === "ko" ? "사업장 만들기" : "Create venue"}
+              </Button>
+            </div>
+          </div>
+          <p className="mt-5 rounded-xl bg-zinc-50 px-4 py-3 text-xs leading-relaxed text-zinc-600">
+            {locale === "ko"
+              ? "만든 직후부터 POS 동기화·CSV 임포트, 직원 연결, 배분 계산, 증빙 지급, 소득 증명이 모두 사용 가능합니다. USDC 온체인 지급만 운영팀의 온체인 사업장 등록(금고 개설) 후 활성화됩니다 — 마감 화면의 금고 상태에서 진행 상황을 확인할 수 있습니다."
+              : "POS sync, CSV import, worker connections, allocation, attested payouts, and income proofs work immediately. Only on-chain USDC payouts wait for the operations team to register the venue on-chain (vault setup) — the settlement close screen shows that status."}
+          </p>
+        </Card>
+      </AppShell>
     );
   }
 
@@ -1176,6 +1335,49 @@ export default function DashboardPage() {
                     )}
                   </div>
                 )}
+              </Card>
+
+              <Card
+                title={locale === "ko" ? "조직 멤버" : "Organization members"}
+                description={
+                  locale === "ko"
+                    ? "매니저·급여 담당자에게 이 대시보드 접근 권한을 부여합니다. 초대할 사람은 해당 이메일로 ServeProof에 한 번 로그인한 상태여야 합니다."
+                    : "Grant dashboard access to managers and payroll staff. The invitee must have signed in to ServeProof once with this email."
+                }
+              >
+                {memberMessage && <Callout tone="emerald">{memberMessage}</Callout>}
+                <div className="mt-3 grid gap-3 md:grid-cols-[1.4fr_1fr_auto] md:items-end">
+                  <label className="block text-xs font-medium text-zinc-600">
+                    {locale === "ko" ? "이메일" : "Email"}
+                    <input
+                      type="email"
+                      className={`${inputClass} mt-1`}
+                      value={memberEmail}
+                      onChange={(event) => setMemberEmail(event.target.value)}
+                      placeholder="manager@example.com"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-zinc-600">
+                    {locale === "ko" ? "역할" : "Role"}
+                    <select
+                      className={`${inputClass} mt-1`}
+                      value={memberRole}
+                      onChange={(event) => setMemberRole(event.target.value)}
+                    >
+                      <option value="MANAGER">MANAGER</option>
+                      <option value="PAYROLL_ADMIN">PAYROLL_ADMIN</option>
+                      <option value="VIEWER">VIEWER</option>
+                      <option value="OWNER">OWNER</option>
+                    </select>
+                  </label>
+                  <Button
+                    variant="dark"
+                    onClick={inviteOrgMember}
+                    disabled={busy || !memberEmail.trim()}
+                  >
+                    {locale === "ko" ? "추가" : "Add"}
+                  </Button>
+                </div>
               </Card>
             </div>
           </details>

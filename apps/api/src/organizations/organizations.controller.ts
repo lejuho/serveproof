@@ -62,7 +62,7 @@ export class OrganizationsController {
   async createVenue(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const input = parseBody(createVenueSchema, body);
     await this.access.assertOrgRole(user.id, input.organizationId, VENUE_MANAGE_ROLES);
-    return this.organizations.createVenue(input);
+    return this.organizations.createVenue(user.id, input);
   }
 
   @Get("venues/:id")
