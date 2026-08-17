@@ -9,6 +9,7 @@ interface InjectedSolanaProvider {
   isPhantom?: boolean;
   publicKey: { toBase58(): string } | null;
   connect(): Promise<{ publicKey: { toBase58(): string } }>;
+  disconnect?(): Promise<void>;
   signTransaction(tx: Transaction): Promise<Transaction>;
 }
 
@@ -26,8 +27,18 @@ function getProvider(): InjectedSolanaProvider {
   return provider;
 }
 
-export async function connectWallet(): Promise<string> {
+export async function connectWallet(options?: { forceReconnect?: boolean }): Promise<string> {
   const provider = getProvider();
+  // Once a site is trusted, connect() resolves silently with the current
+  // account; drop the session first so the wallet re-prompts and the user can
+  // pick a different account.
+  if (options?.forceReconnect && provider.publicKey) {
+    try {
+      await provider.disconnect?.();
+    } catch {
+      // connect() below still works on the existing session
+    }
+  }
   const { publicKey } = await provider.connect();
   return publicKey.toBase58();
 }

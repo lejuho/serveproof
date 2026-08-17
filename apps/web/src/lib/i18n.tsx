@@ -497,6 +497,11 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.wallet.linkedAt": { ko: "등록", en: "Linked" },
   "me.wallet.copy": { ko: "주소 복사", en: "Copy address" },
   "me.wallet.copied": { ko: "복사됨", en: "Copied" },
+  "me.wallet.alreadyLinked": {
+    ko: "이미 등록된 지갑입니다. 다른 지갑을 추가하려면 Phantom 확장 프로그램에서 계정을 전환한 뒤 다시 시도하세요.",
+    en: "This wallet is already linked. To add a different one, switch accounts in the Phantom extension and try again.",
+  },
+  "gradeGuide.link": { ko: "확인 등급 기준 보기", en: "How grades work" },
   "alert.ALLOCATION_GAP": {
     ko: "배분 내역을 확인해 주세요. 근무 기록은 있지만 배분 내역이 없습니다.",
     en: "Review the allocation. A shift is recorded, but no allocation was found.",

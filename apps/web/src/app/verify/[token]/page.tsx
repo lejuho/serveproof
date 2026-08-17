@@ -258,10 +258,18 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                       <dt className="text-zinc-400">{t("verify.payers")}</dt>
                       <dd>{String(disclosed.payerCount)}</dd>
                       <dt className="text-zinc-400">{t("verify.bestGrade")}</dt>
-                      <dd>
+                      <dd className="flex flex-wrap items-center gap-2">
                         <Badge tone={String(disclosed.bestGrade)}>
                           {String(disclosed.bestGrade)}
                         </Badge>
+                        <a
+                          href="/grades"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-emerald-700 underline underline-offset-2"
+                        >
+                          {t("gradeGuide.link")}
+                        </a>
                       </dd>
                       <dt className="text-zinc-400">{t("verify.corrections")}</dt>
                       <dd>{disclosed.hasCorrections ? t("verify.yes") : t("verify.no")}</dd>

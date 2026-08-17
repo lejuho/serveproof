@@ -200,6 +200,7 @@ export default function MyIncomePage() {
   const [copied, setCopied] = useState(false);
   const [copiedAlertId, setCopiedAlertId] = useState<string | null>(null);
   const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
+  const [walletNotice, setWalletNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   const [workerWorkspace, setWorkerWorkspace] = useState<"work" | "income">("income");
@@ -398,8 +399,14 @@ export default function MyIncomePage() {
   async function registerWallet() {
     setBusy(true);
     setError(null);
+    setWalletNotice(null);
     try {
-      const address = await connectWallet();
+      const existing = me?.wallets ?? [];
+      const address = await connectWallet({ forceReconnect: existing.length > 0 });
+      if (existing.some((wallet) => wallet.address === address)) {
+        setWalletNotice(t("me.wallet.alreadyLinked"));
+        return;
+      }
       await api("/workers/me/wallets", { method: "POST", body: { address } });
       await invalidateApiQueries(queryClient, [
         "/workers/me/overview",
@@ -875,6 +882,11 @@ export default function MyIncomePage() {
                   ))}
                 </ul>
               )}
+              {walletNotice && (
+                <div className="mt-3">
+                  <Callout tone="amber">{walletNotice}</Callout>
+                </div>
+              )}
               <div className="mt-4">
                 <Button variant="violet" onClick={registerWallet} disabled={busy}>
                   {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
@@ -945,7 +957,20 @@ export default function MyIncomePage() {
           </Card>
 
           <div id="income-timeline" className="scroll-mt-6" />
-          <Card title={t("me.timeline.title")} description={t("me.timeline.desc")}>
+          <Card
+            title={t("me.timeline.title")}
+            description={
+              <>
+                {t("me.timeline.desc")}{" "}
+                <a
+                  href="/grades"
+                  className="font-medium text-emerald-700 underline underline-offset-2"
+                >
+                  {t("gradeGuide.link")}
+                </a>
+              </>
+            }
+          >
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
