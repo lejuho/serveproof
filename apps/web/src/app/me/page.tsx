@@ -35,9 +35,12 @@ interface Grant {
   id: string;
   purpose: string;
   level: string;
+  accessMode: "LINK" | "RECIPIENT_OTP";
+  recipientEmail: string | null;
   expiresAt: string;
   revokedAt: string | null;
   reports: { id: string; status: string }[];
+  accesses: { id: string; accessedAt: string; ipMasked: string | null; userAgent: string | null }[];
 }
 
 interface TimelineEntry {
@@ -156,6 +159,8 @@ export default function MyIncomePage() {
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [thresholdUsd, setThresholdUsd] = useState("3000");
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientEmailConfirm, setRecipientEmailConfirm] = useState("");
+  const [accessMode, setAccessMode] = useState<"LINK" | "RECIPIENT_OTP">("RECIPIENT_OTP");
   const [emailStatus, setEmailStatus] = useState<"sent" | "failed" | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -248,6 +253,7 @@ export default function MyIncomePage() {
           dateRangeStart: start.toISOString(),
           dateRangeEnd: end.toISOString(),
           expiresAt: expiry.toISOString(),
+          accessMode,
           allowDownload: true,
           autoIssue: true,
           ...(level === "LEVEL_1"
@@ -423,6 +429,10 @@ export default function MyIncomePage() {
   const chosenLevel = levelOptions.find((option) => option.value === level)!;
   const chosenPreset = presetOptions.find((option) => option.value === selectedPreset);
   const invalidEmail = recipientEmail.length > 0 && !/^\S+@\S+\.\S+$/.test(recipientEmail);
+  const recipientRequired = accessMode === "RECIPIENT_OTP" && recipientEmail.length === 0;
+  const recipientMismatch =
+    recipientEmail.length > 0 &&
+    recipientEmail.toLowerCase() !== recipientEmailConfirm.toLowerCase();
   const invalidThreshold =
     level === "LEVEL_1" && (!Number.isFinite(Number(thresholdUsd)) || Number(thresholdUsd) <= 0);
 
@@ -976,12 +986,56 @@ export default function MyIncomePage() {
                       </select>
                     </label>
                   </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label
+                      className={`cursor-pointer rounded-xl border p-4 ${
+                        accessMode === "RECIPIENT_OTP"
+                          ? "border-emerald-400 bg-emerald-50"
+                          : "border-zinc-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="disclosure-access-mode"
+                        className="mr-2 accent-emerald-600"
+                        checked={accessMode === "RECIPIENT_OTP"}
+                        onChange={() => setAccessMode("RECIPIENT_OTP")}
+                      />
+                      <span className="font-semibold text-zinc-900">
+                        {t("me.share.accessRecipient")}
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-zinc-500">
+                        {t("me.share.accessRecipientHint")}
+                      </span>
+                    </label>
+                    <label
+                      className={`cursor-pointer rounded-xl border p-4 ${
+                        accessMode === "LINK" ? "border-amber-400 bg-amber-50" : "border-zinc-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="disclosure-access-mode"
+                        className="mr-2 accent-amber-600"
+                        checked={accessMode === "LINK"}
+                        onChange={() => setAccessMode("LINK")}
+                      />
+                      <span className="font-semibold text-zinc-900">
+                        {t("me.share.accessLink")}
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-zinc-500">
+                        {t("me.share.accessLinkHint")}
+                      </span>
+                    </label>
+                  </div>
                   <label
                     className="mt-4 block text-sm font-medium text-zinc-700"
                     htmlFor="recipient-email"
                   >
                     {t("me.share.recipientLabel")}
-                    <span className="ml-1 font-normal text-zinc-400">{t("optional")}</span>
+                    {accessMode === "LINK" && (
+                      <span className="ml-1 font-normal text-zinc-400">{t("optional")}</span>
+                    )}
                   </label>
                   <input
                     id="recipient-email"
@@ -992,14 +1046,40 @@ export default function MyIncomePage() {
                     onChange={(e) => setRecipientEmail(e.target.value.trim())}
                     placeholder="name@company.com"
                     aria-describedby="recipient-help"
-                    aria-invalid={invalidEmail}
+                    aria-invalid={invalidEmail || recipientRequired}
                   />
                   <p
                     id="recipient-help"
-                    className={`mt-1.5 text-xs ${invalidEmail ? "text-red-600" : "text-zinc-500"}`}
+                    className={`mt-1.5 text-xs ${invalidEmail || recipientRequired ? "text-red-600" : "text-zinc-500"}`}
                   >
-                    {invalidEmail ? t("me.share.emailInvalid") : t("me.share.recipientHint")}
+                    {invalidEmail
+                      ? t("me.share.emailInvalid")
+                      : recipientRequired
+                        ? t("me.share.emailRequired")
+                        : accessMode === "RECIPIENT_OTP"
+                          ? t("me.share.recipientSecureHint")
+                          : t("me.share.recipientHint")}
                   </p>
+                  {recipientEmail && (
+                    <label className="mt-3 block text-sm font-medium text-zinc-700">
+                      {t("me.share.recipientConfirm")}
+                      <input
+                        className={`${inputClass} mt-1.5 ${recipientMismatch ? "border-red-400" : ""}`}
+                        type="email"
+                        autoComplete="off"
+                        value={recipientEmailConfirm}
+                        onChange={(e) => setRecipientEmailConfirm(e.target.value.trim())}
+                        placeholder={recipientEmail}
+                      />
+                      <span
+                        className={`mt-1.5 block text-xs ${recipientMismatch ? "text-red-600" : "text-zinc-500"}`}
+                      >
+                        {recipientMismatch
+                          ? t("me.share.recipientMismatch")
+                          : t("me.share.recipientConfirmHint")}
+                      </span>
+                    </label>
+                  )}
                 </fieldset>
               </div>
 
@@ -1056,14 +1136,23 @@ export default function MyIncomePage() {
                   <div>
                     <dt className="text-zinc-500">{t("me.share.delivery")}</dt>
                     <dd className="mt-1 break-all font-semibold text-zinc-900">
-                      {recipientEmail || t("me.share.deliveryLink")}
+                      {accessMode === "RECIPIENT_OTP"
+                        ? `${recipientEmail || "—"} · OTP`
+                        : recipientEmail || t("me.share.deliveryLink")}
                     </dd>
                   </div>
                 </dl>
                 <Button
                   className="mt-6 w-full py-3"
                   onClick={createDisclosure}
-                  disabled={busy || !purpose.trim() || invalidEmail || invalidThreshold}
+                  disabled={
+                    busy ||
+                    !purpose.trim() ||
+                    invalidEmail ||
+                    recipientRequired ||
+                    recipientMismatch ||
+                    invalidThreshold
+                  }
                 >
                   {busy ? t("me.share.issuing") : t("me.share.create")}
                 </Button>
@@ -1080,7 +1169,11 @@ export default function MyIncomePage() {
                     : "border border-red-200 bg-red-50 text-red-700"
                 }`}
               >
-                {emailStatus === "sent" ? t("me.share.emailSent") : t("me.share.emailFailed")}
+                {emailStatus === "sent"
+                  ? t("me.share.emailSent")
+                  : accessMode === "RECIPIENT_OTP"
+                    ? t("me.share.emailFailedSecure")
+                    : t("me.share.emailFailed")}
               </p>
             )}
 
@@ -1124,44 +1217,70 @@ export default function MyIncomePage() {
             {grants.length > 0 && (
               <ul className="mt-4 flex flex-col gap-2">
                 {grants.map((grant) => (
-                  <li
-                    key={grant.id}
-                    className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <span className="flex min-w-0 flex-wrap items-center gap-2.5 text-[15px]">
-                      <Badge>{statusLabel(grant.level)}</Badge>
-                      <span className="text-zinc-700">{grant.purpose}</span>
-                      <span className="text-sm text-zinc-400">
-                        {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
-                      </span>
-                      {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
-                      {!grant.revokedAt && grant.reports[0] && (
-                        <Badge tone={grant.reports[0].status}>
-                          {statusLabel(grant.reports[0].status)}
+                  <li key={grant.id} className="rounded-xl border border-zinc-200 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="flex min-w-0 flex-wrap items-center gap-2.5 text-[15px]">
+                        <Badge>{statusLabel(grant.level)}</Badge>
+                        <Badge
+                          tone={grant.accessMode === "RECIPIENT_OTP" ? "CONFIRMED" : "PENDING"}
+                        >
+                          {grant.accessMode === "RECIPIENT_OTP"
+                            ? t("me.share.accessRecipientShort")
+                            : t("me.share.accessLinkShort")}
                         </Badge>
+                        <span className="text-zinc-700">{grant.purpose}</span>
+                        <span className="text-sm text-zinc-400">
+                          {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
+                        </span>
+                        {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
+                        {!grant.revokedAt && grant.reports[0] && (
+                          <Badge tone={grant.reports[0].status}>
+                            {statusLabel(grant.reports[0].status)}
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex gap-2">
+                        {!grant.revokedAt && grant.reports[0] && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => downloadPdf(grant.reports[0]!.id)}
+                          >
+                            PDF
+                          </Button>
+                        )}
+                        {!grant.revokedAt && (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => revokeGrant(grant.id)}
+                            disabled={busy}
+                          >
+                            {t("me.share.revoke")}
+                          </Button>
+                        )}
+                      </span>
+                    </div>
+                    <details className="mt-2 text-xs text-zinc-500">
+                      <summary className="cursor-pointer font-medium text-zinc-600">
+                        {t("me.share.accessHistory")} · {grant.accesses.length}
+                      </summary>
+                      {grant.accesses.length === 0 ? (
+                        <p className="mt-2 text-zinc-400">{t("me.share.noAccess")}</p>
+                      ) : (
+                        <ul className="mt-2 space-y-1.5">
+                          {grant.accesses.map((access) => (
+                            <li key={access.id} className="flex flex-wrap gap-x-2">
+                              <span>{new Date(access.accessedAt).toLocaleString()}</span>
+                              <span>{access.ipMasked ?? t("me.share.unknownIp")}</span>
+                              <span className="max-w-full truncate text-zinc-400">
+                                {access.userAgent ?? "—"}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </span>
-                    <span className="flex gap-2">
-                      {!grant.revokedAt && grant.reports[0] && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => downloadPdf(grant.reports[0]!.id)}
-                        >
-                          PDF
-                        </Button>
-                      )}
-                      {!grant.revokedAt && (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => revokeGrant(grant.id)}
-                          disabled={busy}
-                        >
-                          {t("me.share.revoke")}
-                        </Button>
-                      )}
-                    </span>
+                    </details>
                   </li>
                 ))}
               </ul>

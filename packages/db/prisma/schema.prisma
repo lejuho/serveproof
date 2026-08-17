@@ -687,22 +687,28 @@ enum DisclosureLevel {
   LEVEL_3
 }
 
+enum DisclosureAccessMode {
+  LINK
+  RECIPIENT_OTP
+}
+
 model DisclosureGrant {
-  id              String          @id @default(uuid())
+  id              String               @id @default(uuid())
   workerId        String
   recipientEmail  String?
+  accessMode      DisclosureAccessMode @default(LINK)
   purpose         String
-  level           DisclosureLevel @default(LEVEL_2)
-  fieldScope      Json            @default("[]")
-  venueScope      Json            @default("[]")
+  level           DisclosureLevel      @default(LEVEL_2)
+  fieldScope      Json                 @default("[]")
+  venueScope      Json                 @default("[]")
   dateRangeStart  DateTime
   dateRangeEnd    DateTime
   expiresAt       DateTime
-  allowDownload   Boolean         @default(false)
+  allowDownload   Boolean              @default(false)
   revokedAt       DateTime?
   // raw token is only ever returned to the worker; DB stores the hash (spec §29.8)
-  accessTokenHash String          @unique
-  createdAt       DateTime        @default(now())
+  accessTokenHash String               @unique
+  createdAt       DateTime             @default(now())
 
   worker   Worker                @relation(fields: [workerId], references: [id])
   reports  VerificationReport[]

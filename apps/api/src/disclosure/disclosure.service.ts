@@ -1,15 +1,23 @@
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
+  OnApplicationShutdown,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
+import IORedis from "ioredis";
 import PDFDocument from "pdfkit";
 import * as QRCode from "qrcode";
+import { MailService } from "../auth/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 const sha256Hex = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -23,10 +31,62 @@ const REPORTS_DIR = join(process.cwd(), "var", "reports");
 mkdirSync(REPORTS_DIR, { recursive: true });
 
 export type DisclosureLevel = "LEVEL_1" | "LEVEL_2" | "LEVEL_3";
+export type DisclosureAccessMode = "LINK" | "RECIPIENT_OTP";
+
+const ACCESS_OTP_TTL_SECONDS = 300;
+const ACCESS_OTP_MAX_ATTEMPTS = 5;
+const ACCESS_SESSION_TTL_SECONDS = 15 * 60;
+const ACCESS_OTP_COOLDOWN_SECONDS = 60;
+const ACCESS_OTP_MAX_REQUESTS_PER_HOUR = 5;
+
+function maskEmail(email: string): string {
+  const [local = "", domain = ""] = email.split("@");
+  return `${local.slice(0, Math.min(2, local.length))}${"*".repeat(Math.max(3, local.length - 2))}@${domain}`;
+}
+
+function maskIp(ip: string | null): string | null {
+  if (!ip) return null;
+  const normalized = ip.replace(/^::ffff:/, "");
+  if (normalized.includes(".")) {
+    const parts = normalized.split(".");
+    return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}.*` : "***";
+  }
+  const parts = normalized.split(":").filter(Boolean);
+  return parts.length ? `${parts.slice(0, 3).join(":")}:…` : "***";
+}
 
 @Injectable()
-export class DisclosureService {
-  constructor(private readonly prisma: PrismaService) {}
+export class DisclosureService implements OnApplicationShutdown {
+  private readonly logger = new Logger(DisclosureService.name);
+  private readonly redis: IORedis;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {
+    this.redis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+      maxRetriesPerRequest: 2,
+    });
+    this.redis.on("error", (error) => {
+      this.logger.warn(`disclosure redis error (status=${this.redis.status}): ${error.message}`);
+    });
+  }
+
+  async onApplicationShutdown() {
+    await this.redis.quit().catch(() => undefined);
+  }
+
+  private async accessStore<T>(operation: () => Promise<T>): Promise<T> {
+    if (["end", "close"].includes(this.redis.status)) {
+      await this.redis.connect().catch(() => undefined);
+    }
+    try {
+      return await operation();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ServiceUnavailableException(`Disclosure access store unavailable: ${message}`);
+    }
+  }
 
   private async workerOf(userId: string) {
     const worker = await this.prisma.worker.findUnique({
@@ -49,6 +109,7 @@ export class DisclosureService {
       dateRangeEnd: string;
       expiresAt: string;
       recipientEmail?: string;
+      accessMode?: DisclosureAccessMode;
       allowDownload?: boolean;
       thresholdUsdCents?: number; // LEVEL_1 criterion
     },
@@ -56,6 +117,10 @@ export class DisclosureService {
     const worker = await this.workerOf(userId);
     if (input.level === "LEVEL_1" && !input.thresholdUsdCents) {
       throw new BadRequestException("LEVEL_1 requires thresholdUsdCents");
+    }
+    const accessMode = input.accessMode ?? "LINK";
+    if (accessMode === "RECIPIENT_OTP" && !input.recipientEmail) {
+      throw new BadRequestException("Recipient email is required for recipient-only access");
     }
     const rawToken = randomBytes(24).toString("base64url");
     const grant = await this.prisma.disclosureGrant.create({
@@ -70,6 +135,7 @@ export class DisclosureService {
         expiresAt: new Date(input.expiresAt),
         allowDownload: input.allowDownload ?? false,
         recipientEmail: input.recipientEmail?.toLowerCase() ?? null,
+        accessMode,
         accessTokenHash: sha256Hex(rawToken),
       },
     });
@@ -78,11 +144,43 @@ export class DisclosureService {
 
   async listGrants(userId: string) {
     const worker = await this.workerOf(userId);
-    return this.prisma.disclosureGrant.findMany({
-      where: { workerId: worker.id },
-      include: { reports: { orderBy: { createdAt: "desc" }, take: 1 } },
-      orderBy: { createdAt: "desc" },
-    });
+    return this.prisma.disclosureGrant
+      .findMany({
+        where: { workerId: worker.id },
+        select: {
+          id: true,
+          purpose: true,
+          level: true,
+          accessMode: true,
+          recipientEmail: true,
+          dateRangeStart: true,
+          dateRangeEnd: true,
+          expiresAt: true,
+          allowDownload: true,
+          revokedAt: true,
+          createdAt: true,
+          reports: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { id: true, status: true, issuedAt: true, expiresAt: true },
+          },
+          accesses: {
+            orderBy: { accessedAt: "desc" },
+            take: 5,
+            select: { id: true, ip: true, userAgent: true, accessedAt: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+      .then((grants) =>
+        grants.map((grant) => ({
+          ...grant,
+          accesses: grant.accesses.map(({ ip, ...access }) => ({
+            ...access,
+            ipMasked: maskIp(ip),
+          })),
+        })),
+      );
   }
 
   /** Spec §20.1 — worker can revoke at any time; issued reports go REVOKED. */
@@ -375,28 +473,152 @@ export class DisclosureService {
 
   // ── 4.3 Public verification (spec §21.2, §29.8) ────────────────
 
-  async verifyByToken(rawToken: string, meta: { ip?: string; userAgent?: string }) {
+  private reportStatus(grant: {
+    revokedAt: Date | null;
+    expiresAt: Date;
+    reports: Array<{ status: string }>;
+  }): "VALID" | "EXPIRED" | "REVOKED" | "CORRECTED" | "NOT_ISSUED" {
+    const report = grant.reports[0] ?? null;
+    if (grant.revokedAt || report?.status === "REVOKED") return "REVOKED";
+    if (!report) return "NOT_ISSUED";
+    if (grant.expiresAt < new Date() || report.status === "EXPIRED") return "EXPIRED";
+    if (report.status === "CORRECTED") return "CORRECTED";
+    return "VALID";
+  }
+
+  private async grantByToken(rawToken: string) {
     const grant = await this.prisma.disclosureGrant.findUnique({
       where: { accessTokenHash: sha256Hex(rawToken) },
       include: {
         worker: { include: { user: { select: { displayName: true } } } },
-        reports: { orderBy: { createdAt: "desc" }, take: 1 },
+        reports: { orderBy: { createdAt: "desc" as const }, take: 1 },
       },
     });
     if (!grant) throw new NotFoundException("Unknown verification token");
+    return grant;
+  }
 
-    await this.prisma.disclosureAccessLog.create({
-      data: { grantId: grant.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+  private assertRecipientAccessAvailable(grant: Awaited<ReturnType<typeof this.grantByToken>>) {
+    if (this.reportStatus(grant) !== "VALID") {
+      throw new ForbiddenException("This report is not available for recipient access");
+    }
+    if (grant.accessMode !== "RECIPIENT_OTP" || !grant.recipientEmail) {
+      throw new BadRequestException("This report does not require recipient authentication");
+    }
+  }
+
+  async requestRecipientOtp(rawToken: string) {
+    const grant = await this.grantByToken(rawToken);
+    this.assertRecipientAccessAvailable(grant);
+    const email = grant.recipientEmail!;
+    const cooldownKey = `disclosure:otp:${grant.id}:cooldown`;
+    const allowed = await this.accessStore(() =>
+      this.redis.set(cooldownKey, "1", "EX", ACCESS_OTP_COOLDOWN_SECONDS, "NX"),
+    );
+    if (!allowed) {
+      throw new HttpException(
+        "Please wait before requesting another code",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const hourlyKey = `disclosure:otp:${grant.id}:hourly-requests`;
+    const hourlyRequests = await this.accessStore(async () => {
+      const count = await this.redis.incr(hourlyKey);
+      if (count === 1) await this.redis.expire(hourlyKey, 60 * 60);
+      return count;
+    });
+    if (hourlyRequests > ACCESS_OTP_MAX_REQUESTS_PER_HOUR) {
+      throw new HttpException("Too many access-code requests", HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const otpKey = `disclosure:otp:${grant.id}`;
+    await this.accessStore(async () => {
+      await this.redis.set(otpKey, sha256Hex(code), "EX", ACCESS_OTP_TTL_SECONDS);
+      await this.redis.set(`${otpKey}:attempts`, "0", "EX", ACCESS_OTP_TTL_SECONDS);
     });
 
-    const report = grant.reports[0] ?? null;
-    let status: "VALID" | "EXPIRED" | "REVOKED" | "CORRECTED" | "NOT_ISSUED";
-    if (grant.revokedAt || report?.status === "REVOKED") status = "REVOKED";
-    else if (!report) status = "NOT_ISSUED";
-    else if (grant.expiresAt < new Date() || report.status === "EXPIRED") status = "EXPIRED";
-    else if (report.status === "CORRECTED") status = "CORRECTED";
-    else status = "VALID";
+    const domain = email.split("@")[1] ?? "";
+    const devCodeDomains = (process.env.OTP_DEVCODE_DOMAINS ?? "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const exposeDevCode =
+      (process.env.APP_ENV ?? "local") === "local" || devCodeDomains.includes(domain);
+    if (!exposeDevCode) {
+      try {
+        await this.mail.send(
+          email,
+          "[ServeProof] 소득증명 열람 코드",
+          [
+            `ServeProof 소득증명 열람 코드: ${code}`,
+            "",
+            "이 코드는 5분간 유효하며, 5회 이상 틀리면 새 코드를 요청해야 합니다.",
+            "본인이 소득증명을 열려고 요청한 것이 아니라면 이 메일을 무시하세요.",
+            "",
+            `Your ServeProof income-proof access code is ${code}. It expires in 5 minutes.`,
+          ].join("\n"),
+        );
+      } catch (error) {
+        await this.accessStore(async () => {
+          await this.redis.del(otpKey, `${otpKey}:attempts`, cooldownKey);
+          await this.redis.decr(hourlyKey);
+        }).catch(() => undefined);
+        throw error;
+      }
+    }
 
+    return {
+      sent: true,
+      recipientEmailMasked: maskEmail(email),
+      expiresInSeconds: ACCESS_OTP_TTL_SECONDS,
+      ...(exposeDevCode ? { devCode: code } : {}),
+    };
+  }
+
+  async verifyRecipientOtp(rawToken: string, code: string) {
+    const grant = await this.grantByToken(rawToken);
+    this.assertRecipientAccessAvailable(grant);
+    const otpKey = `disclosure:otp:${grant.id}`;
+    const storedHash = await this.accessStore(() => this.redis.get(otpKey));
+    if (!storedHash) throw new UnauthorizedException("Invalid or expired code");
+    const attempts = await this.accessStore(() => this.redis.incr(`${otpKey}:attempts`));
+    if (attempts > ACCESS_OTP_MAX_ATTEMPTS) {
+      await this.accessStore(() => this.redis.del(otpKey, `${otpKey}:attempts`));
+      throw new UnauthorizedException("Too many attempts; request a new code");
+    }
+    if (storedHash !== sha256Hex(code)) {
+      throw new UnauthorizedException("Invalid or expired code");
+    }
+    await this.accessStore(() => this.redis.del(otpKey, `${otpKey}:attempts`));
+
+    const accessToken = randomBytes(32).toString("base64url");
+    const expiresInSeconds = Math.max(
+      1,
+      Math.min(
+        ACCESS_SESSION_TTL_SECONDS,
+        Math.floor((grant.expiresAt.getTime() - Date.now()) / 1000),
+      ),
+    );
+    await this.accessStore(() =>
+      this.redis.set(
+        `disclosure:session:${grant.id}:${sha256Hex(accessToken)}`,
+        "1",
+        "EX",
+        expiresInSeconds,
+      ),
+    );
+    return { accessToken, expiresInSeconds };
+  }
+
+  async verifyByToken(
+    rawToken: string,
+    meta: { ip?: string; userAgent?: string },
+    accessSession?: string,
+  ) {
+    const grant = await this.grantByToken(rawToken);
+    const report = grant.reports[0] ?? null;
+    const status = this.reportStatus(grant);
     const base = {
       status,
       issuer: "ServeProof POC",
@@ -407,9 +629,32 @@ export class DisclosureService {
       expiresAt: grant.expiresAt,
       reportId: report?.id ?? null,
       reportHash: report?.reportHash ?? null,
+      accessMode: grant.accessMode,
     };
-    // Revoked links never render income data (§28: 철회된 링크 접근 차단)
-    if (status === "REVOKED" || status === "NOT_ISSUED") return base;
+
+    // Only a currently valid report can ever return its snapshot. Expired,
+    // revoked, corrected, and unissued links expose metadata only.
+    if (status !== "VALID") return base;
+
+    if (grant.accessMode === "RECIPIENT_OTP") {
+      const sessionValid = accessSession
+        ? await this.accessStore(() =>
+            this.redis.get(`disclosure:session:${grant.id}:${sha256Hex(accessSession)}`),
+          )
+        : null;
+      if (!sessionValid) {
+        return {
+          status: "AUTH_REQUIRED" as const,
+          accessMode: grant.accessMode,
+          expiresAt: grant.expiresAt,
+          recipientEmailMasked: maskEmail(grant.recipientEmail!),
+        };
+      }
+    }
+
+    await this.prisma.disclosureAccessLog.create({
+      data: { grantId: grant.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+    });
     return { ...base, disclosed: report?.snapshot ?? null };
   }
 

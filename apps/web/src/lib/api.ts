@@ -190,7 +190,9 @@ function sessionHasToken(session: StoredSession): boolean {
 
 function findSession(id: string | null): StoredSession | null {
   if (!id) return null;
-  return readSessionIndex().find((session) => session.id === id && sessionHasToken(session)) ?? null;
+  return (
+    readSessionIndex().find((session) => session.id === id && sessionHasToken(session)) ?? null
+  );
 }
 
 function currentSession(): StoredSession | null {
@@ -252,7 +254,9 @@ export class ApiError extends Error {
 export function getStoredSessions(): StoredSession[] {
   if (typeof window === "undefined") return [];
   migrateLegacySessions();
-  return readSessionIndex().filter(sessionHasToken).sort((a, b) => b.updatedAt - a.updatedAt);
+  return readSessionIndex()
+    .filter(sessionHasToken)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 function destinationFor(mode: AppMode): string {
@@ -309,10 +313,7 @@ export async function syncCurrentSession(): Promise<StoredSession | null> {
       modes,
       defaultMode: modes.includes(session.defaultMode) ? session.defaultMode : modes[0]!,
     };
-    writeSessionIndex([
-      ...readSessionIndex().filter((item) => item.id !== session.id),
-      updated,
-    ]);
+    writeSessionIndex([...readSessionIndex().filter((item) => item.id !== session.id), updated]);
     for (const mode of session.modes) {
       if (!modes.includes(mode) && localStorage.getItem(lastModeKey(mode)) === session.id) {
         localStorage.removeItem(lastModeKey(mode));
@@ -364,7 +365,8 @@ async function refreshSession(staleAccessToken?: string | null): Promise<boolean
   if (existing) return existing;
   const pending = withRefreshLock(session.id, async () => {
     const latestAccessToken = localStorage.getItem(sessionAccessKey(session.id));
-    if (staleAccessToken && latestAccessToken && latestAccessToken !== staleAccessToken) return true;
+    if (staleAccessToken && latestAccessToken && latestAccessToken !== staleAccessToken)
+      return true;
     const attemptedRefreshToken = getRefreshToken(session.id);
     if (!attemptedRefreshToken) {
       removeSession(session.id);
@@ -444,11 +446,19 @@ export async function logoutSession(): Promise<void> {
 
 export async function api<T = unknown>(
   path: string,
-  options: { method?: string; body?: unknown; auth?: boolean } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    auth?: boolean;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<T> {
   let tokenUsed: string | null = null;
   const request = () => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...options.headers,
+    };
     if (options.auth !== false) {
       tokenUsed = getToken();
       if (tokenUsed) headers.Authorization = `Bearer ${tokenUsed}`;

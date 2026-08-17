@@ -33,11 +33,14 @@ The next sequence is **staging seed → Worker operations check → deployment s
 - Income ledger, payroll observations, discrepancies, and correction records
 - Conservative tax-readiness notice for amounts not yet matched to payroll/withholding records, excluding Devnet test assets
 - Selective-disclosure PDF and QR reports with expiration, revocation, and correction-aware public verification
+- Recipient-email OTP (default) or explicit public-link sharing, recipient confirmation, and masked access history for income proofs
 - BullMQ jobs for provider sync, Solana confirmation/reconciliation, and report expiration
 
 Staffing currently operates as a closed labor pool limited to workers with confirmed venue connections. It does not provide a public job marketplace, automated worker classification, background checks, insurance, or employer-of-record services. Displayed hourly rates and expected tips are offer terms; approved attendance and settlement evidence determine recorded income.
 
 The UI separates venue work into `Staffing / Settlement & income` and worker work into `Work / Income & proof`. Venue and account context remain persistent, with explicit handoffs from approved attendance to allocation and the income ledger.
+
+New income proofs default to `recipient email OTP`. The recipient must pass a five-minute OTP and receives an access session lasting at most 15 minutes. Workers can explicitly opt into an unauthenticated public link. Expired, revoked, or corrected links return report metadata but never the income snapshot. Existing grants remain public-link mode for compatibility.
 
 For detailed requirements and current progress, see the [implementation specification](ServeProof_MVP_Implementation_Spec_v2.md), [implementation plan](IMPLEMENTATION_PLAN.md), and [architecture documentation](ARCHITECTURE.md).
 

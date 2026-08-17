@@ -230,6 +230,18 @@ const dict: Record<string, { ko: string; en: string }> = {
     en: "Includes dates, venues, allocations, payments, and reported amounts",
   },
   "me.share.accessSettings": { ko: "기간과 수신자를 정하세요", en: "Set timing and recipient" },
+  "me.share.accessRecipient": { ko: "지정 이메일만 열람", en: "Recipient email only" },
+  "me.share.accessRecipientHint": {
+    ko: "수신자가 이메일 OTP를 인증해야 소득 내용을 볼 수 있습니다. 권장 방식입니다.",
+    en: "The recipient must verify an email OTP before income details appear. Recommended.",
+  },
+  "me.share.accessLink": { ko: "링크를 가진 누구나", en: "Anyone with the link" },
+  "me.share.accessLinkHint": {
+    ko: "로그인 없이 열립니다. 전달되거나 잘못 발송되면 다른 사람이 볼 수 있습니다.",
+    en: "No sign-in is required. Forwarded or misdirected links can be viewed by others.",
+  },
+  "me.share.accessRecipientShort": { ko: "이메일 OTP", en: "Email OTP" },
+  "me.share.accessLinkShort": { ko: "공개 링크", en: "Public link" },
   "me.share.period": { ko: "소득 조회 기간", en: "Income period" },
   "me.share.expiration": { ko: "링크 만료", en: "Link expiration" },
   "me.share.range.1": { ko: "최근 1개월", en: "Last month" },
@@ -249,6 +261,26 @@ const dict: Record<string, { ko: string; en: string }> = {
     ko: "올바른 이메일 주소를 입력해 주세요.",
     en: "Enter a valid email address.",
   },
+  "me.share.emailRequired": {
+    ko: "지정 이메일 열람에는 수신자 이메일이 필요합니다.",
+    en: "A recipient email is required for recipient-only access.",
+  },
+  "me.share.recipientSecureHint": {
+    ko: "이 주소로 링크와 열람 OTP가 발송됩니다.",
+    en: "The share link and access OTP will be sent to this address.",
+  },
+  "me.share.recipientConfirm": { ko: "수신자 이메일 다시 입력", en: "Confirm recipient email" },
+  "me.share.recipientConfirmHint": {
+    ko: "잘못된 사람에게 전송되지 않도록 주소를 한 번 더 확인합니다.",
+    en: "Enter it again to reduce accidental delivery to the wrong person.",
+  },
+  "me.share.recipientMismatch": {
+    ko: "두 이메일 주소가 일치하지 않습니다.",
+    en: "The recipient email addresses do not match.",
+  },
+  "me.share.accessHistory": { ko: "최근 열람 기록", en: "Recent access history" },
+  "me.share.noAccess": { ko: "아직 확인된 열람이 없습니다.", en: "No verified views yet." },
+  "me.share.unknownIp": { ko: "IP 정보 없음", en: "IP unavailable" },
   "me.share.review": { ko: "공유 전 확인", en: "Review before sharing" },
   "me.share.destination": { ko: "제출처", en: "Destination" },
   "me.share.destinationCustom": { ko: "직접 지정", en: "Custom destination" },
@@ -300,6 +332,10 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.share.emailFailed": {
     ko: "이메일 발송에 실패했습니다. 아래 링크를 직접 전달하세요.",
     en: "Email delivery failed. Share the link below manually.",
+  },
+  "me.share.emailFailedSecure": {
+    ko: "이메일 발송에 실패했습니다. 주소를 확인한 뒤 이 공유를 철회하고 다시 발급하세요.",
+    en: "Email delivery failed. Check the address, revoke this share, and issue a new one.",
   },
   "me.share.preset.custom": { ko: "용도 프리셋…", en: "Purpose preset…" },
   "me.share.preset.rent": { ko: "아파트·주택 임대", en: "Apartment or home rental" },
@@ -462,20 +498,42 @@ const dict: Record<string, { ko: string; en: string }> = {
   // verify
   "verify.header": { ko: "소득증명 검증", en: "Income verification" },
   "verify.msg.VALID": { ko: "이 보고서는 유효합니다.", en: "This report is valid." },
-  "verify.msg.EXPIRED": { ko: "이 보고서는 만료되었습니다.", en: "This report has expired." },
+  "verify.msg.EXPIRED": {
+    ko: "이 보고서는 만료되었습니다. 소득 정보는 표시되지 않습니다.",
+    en: "This report has expired. No income data is shown.",
+  },
   "verify.msg.REVOKED": {
     ko: "이 공유 링크는 노동자에 의해 철회되었습니다. 소득 정보는 표시되지 않습니다.",
     en: "This link was revoked by the worker. No income data is shown.",
   },
   "verify.msg.CORRECTED": {
-    ko: "원본 기록에 정정이 발생했습니다. 최신 보고서를 요청하세요.",
-    en: "The underlying records were corrected. Request an up-to-date report.",
+    ko: "원본 기록에 정정이 발생해 소득 정보가 차단되었습니다. 최신 보고서를 요청하세요.",
+    en: "Income data is blocked because the underlying records changed. Request an up-to-date report.",
   },
   "verify.msg.NOT_ISSUED": {
     ko: "아직 보고서가 발급되지 않았습니다.",
     en: "No report has been issued yet.",
   },
   "verify.info.title": { ko: "보고서 정보", en: "Report details" },
+  "verify.auth.title": { ko: "수신자 이메일 확인", en: "Verify recipient email" },
+  "verify.auth.description": {
+    ko: "소득 정보는 지정된 수신자만 볼 수 있습니다. {email}로 일회용 코드를 받으세요.",
+    en: "Only the designated recipient can view the income details. Request a one-time code at {email}.",
+  },
+  "verify.auth.send": { ko: "이메일로 코드 받기", en: "Send email code" },
+  "verify.auth.sending": { ko: "코드 보내는 중…", en: "Sending code…" },
+  "verify.auth.code": { ko: "6자리 열람 코드", en: "6-digit access code" },
+  "verify.auth.verify": { ko: "확인하고 열람", en: "Verify and view" },
+  "verify.auth.checking": { ko: "확인 중…", en: "Verifying…" },
+  "verify.auth.resend": { ko: "코드 다시 받기", en: "Resend code" },
+  "verify.auth.notice": {
+    ko: "인증된 열람은 소득 제공자에게 시각, 마스킹된 IP 및 브라우저 정보로 기록됩니다.",
+    en: "Verified access is logged for the income owner with time, masked IP, and browser information.",
+  },
+  "verify.auth.devCode": {
+    ko: "로컬·데모 코드: {code}",
+    en: "Local/demo code: {code}",
+  },
   "verify.issuer": { ko: "발급자", en: "Issuer" },
   "verify.subject": { ko: "대상", en: "Subject" },
   "verify.purpose": { ko: "목적", en: "Purpose" },

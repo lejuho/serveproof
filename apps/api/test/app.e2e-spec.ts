@@ -5,12 +5,14 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AllocationsModule } from "../src/allocations/allocations.module";
 import { AuthModule } from "../src/auth/auth.module";
+import { DisclosureModule } from "../src/disclosure/disclosure.module";
 import { EvidenceModule } from "../src/evidence/evidence.module";
 import { HealthModule } from "../src/health/health.module";
 import { MappingsModule } from "../src/mappings/mappings.module";
 import { OrganizationsModule } from "../src/organizations/organizations.module";
 import { PoliciesModule } from "../src/policies/policies.module";
 import { PrismaModule } from "../src/prisma/prisma.module";
+import { PrismaService } from "../src/prisma/prisma.service";
 import { ProvidersModule } from "../src/providers/providers.module";
 import { WorkersModule } from "../src/workers/workers.module";
 import { StaffingModule } from "../src/staffing/staffing.module";
@@ -29,6 +31,7 @@ import { StaffingModule } from "../src/staffing/staffing.module";
     AllocationsModule,
     ProvidersModule,
     StaffingModule,
+    DisclosureModule,
   ],
 })
 class IntegrationTestModule {}
@@ -110,6 +113,71 @@ describe("ServeProof API integration", () => {
       .send({ refreshToken: rotated.body.refreshToken })
       .expect(201, { revoked: true });
     await api().post("/auth/refresh").send({ refreshToken: rotated.body.refreshToken }).expect(401);
+  });
+
+  it("gates recipient disclosures with email OTP and hides expired snapshots", async () => {
+    const worker = await login("disclosure");
+    const created = await api()
+      .post("/disclosures")
+      .set(bearer(worker))
+      .send({
+        purpose: "Recipient access test",
+        level: "LEVEL_2",
+        dateRangeStart: "2026-01-01T00:00:00.000Z",
+        dateRangeEnd: "2026-12-31T23:59:59.999Z",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        recipientEmail: `recipient-${runId}@example.test`,
+        accessMode: "RECIPIENT_OTP",
+        autoIssue: true,
+      })
+      .expect(201);
+    const token = new URL(created.body.shareUrl).pathname.split("/").pop()!;
+
+    await api()
+      .get(`/verify/${token}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.status).toBe("AUTH_REQUIRED");
+        expect(body.disclosed).toBeUndefined();
+        expect(body.workerDisplayName).toBeUndefined();
+      });
+
+    const otp = await api().post(`/verify/${token}/access/request`).send({}).expect(201);
+    expect(otp.body.devCode).toMatch(/^\d{6}$/);
+    await api().post(`/verify/${token}/access/verify`).send({ code: "000000" }).expect(401);
+    const verified = await api()
+      .post(`/verify/${token}/access/verify`)
+      .send({ code: otp.body.devCode })
+      .expect(201);
+
+    await api()
+      .get(`/verify/${token}`)
+      .set("x-disclosure-session", verified.body.accessToken)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.status).toBe("VALID");
+        expect(body.disclosed).toBeDefined();
+      });
+
+    const grants = await api().get("/disclosures").set(bearer(worker)).expect(200);
+    expect(grants.body[0]).toMatchObject({
+      accessMode: "RECIPIENT_OTP",
+      accesses: [expect.objectContaining({ ipMasked: expect.any(String) })],
+    });
+
+    const prisma = app.get(PrismaService);
+    await prisma.disclosureGrant.update({
+      where: { id: created.body.grant.id },
+      data: { expiresAt: new Date("2020-01-01T00:00:00.000Z") },
+    });
+    await api()
+      .get(`/verify/${token}`)
+      .set("x-disclosure-session", verified.body.accessToken)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.status).toBe("EXPIRED");
+        expect(body.disclosed).toBeUndefined();
+      });
   });
 
   it("enforces RBAC, tenant isolation, and allocation state transitions", async () => {

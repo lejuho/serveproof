@@ -24,6 +24,7 @@ const createGrantSchema = z.object({
   dateRangeEnd: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
   recipientEmail: z.email().optional(),
+  accessMode: z.enum(["LINK", "RECIPIENT_OTP"]).optional(),
   allowDownload: z.boolean().optional(),
   thresholdUsdCents: z.number().int().positive().optional(),
   // issue the report in the same call — required for recipient email delivery
@@ -37,6 +38,8 @@ const issueReportSchema = z.object({
   // backend only stores its hash, so the QR target comes from the client.
   shareUrl: z.url().optional(),
 });
+
+const verifyRecipientOtpSchema = z.object({ code: z.string().regex(/^\d{6}$/) });
 
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
@@ -77,11 +80,15 @@ export class DisclosureController {
             `공개 수준: ${input.level}`,
             `만료: ${new Date(input.expiresAt).toISOString().slice(0, 10)}`,
             "",
-            `아래 링크에서 진위를 직접 확인할 수 있습니다 (계정 불필요):`,
+            input.accessMode === "RECIPIENT_OTP"
+              ? `아래 링크를 열고 이 이메일 주소로 열람 코드를 받아 확인하세요:`
+              : `아래 링크에서 진위를 직접 확인할 수 있습니다 (계정 불필요):`,
             shareUrl,
             "",
             `An income proof has been shared with you via ServeProof.`,
-            `Verify it at the link above — no account required.`,
+            input.accessMode === "RECIPIENT_OTP"
+              ? `Open the link and request an access code at this email address.`
+              : `Verify it at the link above — no account required.`,
           ].join("\n"),
         );
         emailSent = true;
@@ -138,7 +145,21 @@ export class DisclosureController {
     @Param("token") token: string,
     @Ip() ip: string,
     @Headers("user-agent") userAgent?: string,
+    @Headers("x-disclosure-session") accessSession?: string,
   ) {
-    return this.disclosure.verifyByToken(token, { ip, userAgent });
+    return this.disclosure.verifyByToken(token, { ip, userAgent }, accessSession);
+  }
+
+  @Public()
+  @Post("verify/:token/access/request")
+  requestRecipientAccess(@Param("token") token: string) {
+    return this.disclosure.requestRecipientOtp(token);
+  }
+
+  @Public()
+  @Post("verify/:token/access/verify")
+  verifyRecipientAccess(@Param("token") token: string, @Body() body: unknown) {
+    const { code } = parseBody(verifyRecipientOtpSchema, body);
+    return this.disclosure.verifyRecipientOtp(token, code);
   }
 }
