@@ -13,3 +13,28 @@
 html {
   scroll-behavior: smooth;
 }
+
+@keyframes sp-content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sp-content-reveal {
+  animation: sp-content-reveal 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .sp-content-reveal {
+    animation: none;
+  }
+}

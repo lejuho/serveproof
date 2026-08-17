@@ -79,9 +79,65 @@ export function AppShell({
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{title}</h1>
           {subtitle && <p className="mt-1.5 text-[15px] text-zinc-500">{subtitle}</p>}
         </div>
-        {children}
+        <div className="sp-content-reveal flex flex-col gap-6">{children}</div>
       </main>
     </div>
+  );
+}
+
+export function Spinner({
+  size = "md",
+  className = "",
+}: {
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
+  const sizes = { sm: "h-4 w-4", md: "h-5 w-5", lg: "h-8 w-8" };
+  return (
+    <svg
+      className={`animate-spin ${sizes[size]} ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.2" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function LoadingState({
+  title,
+  description,
+  fullScreen = false,
+  compact = false,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  fullScreen?: boolean;
+  compact?: boolean;
+}) {
+  const content = (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className={`sp-content-reveal flex flex-col items-center justify-center text-center ${
+        compact ? "min-h-24 py-4" : "min-h-64 px-6 py-12"
+      }`}
+    >
+      <Spinner size={compact ? "md" : "lg"} className="text-emerald-600" />
+      <p className={`${compact ? "mt-3 text-sm" : "mt-4 text-[15px]"} font-semibold text-zinc-700`}>
+        {title}
+      </p>
+      {description && <p className="mt-1.5 text-sm text-zinc-400">{description}</p>}
+    </div>
+  );
+
+  return fullScreen ? (
+    <main className="flex min-h-screen items-center justify-center bg-zinc-50">{content}</main>
+  ) : (
+    content
   );
 }
 
@@ -134,17 +190,28 @@ export function Button({
   variant = "primary",
   size = "md",
   className = "",
+  loading = false,
+  loadingLabel,
+  children,
+  disabled,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: keyof typeof BUTTON_VARIANTS;
   size?: "sm" | "md";
+  loading?: boolean;
+  loadingLabel?: ReactNode;
 }) {
   const sizeClass = size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2.5 text-sm";
   return (
     <button
       {...props}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${sizeClass} ${BUTTON_VARIANTS[variant]} ${className}`}
-    />
+    >
+      {loading && <Spinner size="sm" />}
+      {loading && loadingLabel ? loadingLabel : children}
+    </button>
   );
 }
 

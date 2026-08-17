@@ -8,6 +8,7 @@ import {
   Card,
   inputClass,
   LanguageToggle,
+  LoadingState,
   Logo,
   tableCellClass,
   tableHeadClass,
@@ -139,6 +140,10 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
           </span>
         </div>
 
+        {!result && !error && (
+          <LoadingState title={t("loading.report")} description={t("loading.wait")} />
+        )}
+
         {error && (
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -147,6 +152,7 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
 
         {result?.status === "AUTH_REQUIRED" && (
           <Card
+            className="sp-content-reveal"
             title={t("verify.auth.title")}
             description={t("verify.auth.description").replace(
               "{email}",
@@ -154,8 +160,8 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
             )}
           >
             {!otpRequested ? (
-              <Button onClick={requestOtp} disabled={busy}>
-                {busy ? t("verify.auth.sending") : t("verify.auth.send")}
+              <Button onClick={requestOtp} loading={busy} loadingLabel={t("verify.auth.sending")}>
+                {t("verify.auth.send")}
               </Button>
             ) : (
               <div className="max-w-sm">
@@ -176,8 +182,13 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
                   </p>
                 )}
                 <div className="mt-3 flex gap-2">
-                  <Button onClick={verifyOtp} disabled={busy || otpCode.length !== 6}>
-                    {busy ? t("verify.auth.checking") : t("verify.auth.verify")}
+                  <Button
+                    onClick={verifyOtp}
+                    disabled={otpCode.length !== 6}
+                    loading={busy}
+                    loadingLabel={t("verify.auth.checking")}
+                  >
+                    {t("verify.auth.verify")}
                   </Button>
                   <Button variant="secondary" onClick={requestOtp} disabled={busy}>
                     {t("verify.auth.resend")}
@@ -191,7 +202,7 @@ export default function VerifyPage({ params }: { params: Promise<{ token: string
 
         {result && result.status !== "AUTH_REQUIRED" && hero && (
           <>
-            <div className={`rounded-2xl border-2 p-8 text-center ${hero.box}`}>
+            <div className={`sp-content-reveal rounded-2xl border-2 p-8 text-center ${hero.box}`}>
               <p className="text-5xl">{hero.icon}</p>
               <p className="mt-3 text-4xl font-black tracking-wide">{result.status}</p>
               <p className="mt-2 text-[15px]">{t(`verify.msg.${result.status}`)}</p>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { Badge, Button, Callout, Card, inputClass } from "@/components/ui";
+import { Badge, Button, Callout, Card, inputClass, LoadingState } from "@/components/ui";
 import type { WorkerConnectionsResponse } from "@/components/worker-connections";
 
 interface StaffingAssignment {
@@ -88,6 +88,7 @@ export function VenueStaffingCard({
     return localInput(date);
   }, []);
   const [shifts, setShifts] = useState<StaffingShift[]>([]);
+  const [loading, setLoading] = useState(true);
   const [role, setRole] = useState("SERVER");
   const [description, setDescription] = useState("");
   const [startsAt, setStartsAt] = useState(startDefault);
@@ -102,10 +103,15 @@ export function VenueStaffingCard({
   const [showCreate, setShowCreate] = useState(false);
 
   const refresh = useCallback(() => {
-    if (!venueId) return;
+    if (!venueId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     api<StaffingShift[]>(`/staffing/venues/${venueId}/shifts`)
       .then(setShifts)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+      .finally(() => setLoading(false));
   }, [venueId]);
 
   useEffect(() => refresh(), [refresh]);
@@ -281,7 +287,7 @@ export function VenueStaffingCard({
         </div>
       )}
 
-      {connectedWorkers.length === 0 && (
+      {connections !== null && connectedWorkers.length === 0 && (
         <Callout tone="amber">
           {ko
             ? "초대할 노동자가 아직 없습니다. 정산·소득 탭의 직원 계정 연결을 먼저 완료하세요."
@@ -293,7 +299,10 @@ export function VenueStaffingCard({
       )}
 
       <div className="mt-4 grid gap-3">
-        {shifts.length === 0 && (
+        {loading && (
+          <LoadingState compact title={ko ? "근무 목록을 불러오는 중…" : "Loading shifts…"} />
+        )}
+        {!loading && shifts.length === 0 && (
           <p className="text-sm text-zinc-400">
             {ko ? "아직 등록된 시프트가 없습니다." : "No staffing shifts yet."}
           </p>
@@ -507,14 +516,17 @@ export function WorkerStaffingCard({
 }) {
   const ko = locale === "ko";
   const [shifts, setShifts] = useState<StaffingShift[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [view, setView] = useState<"available" | "mine">("available");
   const refresh = useCallback(() => {
+    setLoading(true);
     api<StaffingShift[]>("/staffing/workers/me/shifts")
       .then(setShifts)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+      .finally(() => setLoading(false));
   }, []);
   useEffect(() => refresh(), [refresh]);
 
@@ -588,21 +600,27 @@ export function WorkerStaffingCard({
         </button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        {shifts.filter((shift) =>
-          view === "available"
-            ? !shift.assignments[0] && shift.status === "OPEN"
-            : Boolean(shift.assignments[0]),
-        ).length === 0 && (
-          <p className="text-sm text-zinc-400">
-            {view === "available"
-              ? ko
-                ? "현재 모집 중인 시프트가 없습니다."
-                : "No shifts are currently recruiting."
-              : ko
-                ? "아직 수락하거나 초대받은 근무가 없습니다."
-                : "No assigned shifts yet."}
-          </p>
+        {loading && (
+          <div className="md:col-span-2">
+            <LoadingState compact title={ko ? "근무 목록을 불러오는 중…" : "Loading shifts…"} />
+          </div>
         )}
+        {!loading &&
+          shifts.filter((shift) =>
+            view === "available"
+              ? !shift.assignments[0] && shift.status === "OPEN"
+              : Boolean(shift.assignments[0]),
+          ).length === 0 && (
+            <p className="text-sm text-zinc-400">
+              {view === "available"
+                ? ko
+                  ? "현재 모집 중인 시프트가 없습니다."
+                  : "No shifts are currently recruiting."
+                : ko
+                  ? "아직 수락하거나 초대받은 근무가 없습니다."
+                  : "No assigned shifts yet."}
+            </p>
+          )}
         {shifts
           .filter((shift) =>
             view === "available"

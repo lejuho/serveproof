@@ -10,7 +10,15 @@ import {
   setTokens,
   type StoredSession,
 } from "@/lib/api";
-import { Button, Callout, LanguageToggle, Logo, inputClass } from "@/components/ui";
+import {
+  Button,
+  Callout,
+  LanguageToggle,
+  LoadingState,
+  Logo,
+  Spinner,
+  inputClass,
+} from "@/components/ui";
 import { useI18n } from "@/lib/i18n";
 
 export default function LoginPage() {
@@ -25,6 +33,7 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [switchMode, setSwitchMode] = useState(false);
   const [savedSessions, setSavedSessions] = useState<StoredSession[]>([]);
+  const [activatingSessionId, setActivatingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,16 +93,12 @@ export default function LoginPage() {
   }
 
   if (checkingSession) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-50 text-sm text-zinc-500">
-        {t("auth.restoring")}
-      </main>
-    );
+    return <LoadingState fullScreen title={t("auth.restoring")} description={t("loading.wait")} />;
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-md">
+      <div className="sp-content-reveal w-full max-w-md">
         <div className="mb-8 flex items-center justify-between">
           <Logo size={36} />
           <LanguageToggle />
@@ -113,11 +118,14 @@ export default function LoginPage() {
                     <button
                       key={session.id}
                       type="button"
+                      disabled={activatingSessionId !== null}
                       onClick={() => {
+                        setActivatingSessionId(session.id);
                         const destination = activateSession(session.id);
                         if (destination) router.push(destination);
+                        else setActivatingSessionId(null);
                       }}
-                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left hover:border-emerald-300 hover:bg-emerald-50"
+                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-60"
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-zinc-800">
@@ -133,9 +141,13 @@ export default function LoginPage() {
                             .join(" · ")}
                         </span>
                       </span>
-                      <span className="text-xs font-semibold text-emerald-700">
-                        {t("login.continue")}
-                      </span>
+                      {activatingSessionId === session.id ? (
+                        <Spinner size="sm" className="text-emerald-600" />
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-700">
+                          {t("login.continue")}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -153,7 +165,12 @@ export default function LoginPage() {
                     onKeyDown={(e) => e.key === "Enter" && requestOtp()}
                   />
                 </label>
-                <Button onClick={requestOtp} disabled={busy} className="w-full">
+                <Button
+                  onClick={requestOtp}
+                  loading={busy}
+                  loadingLabel={t("login.requesting")}
+                  className="w-full"
+                >
                   {t("login.request")}
                 </Button>
               </>
@@ -176,7 +193,13 @@ export default function LoginPage() {
                   placeholder="000000"
                   onKeyDown={(e) => e.key === "Enter" && code.length === 6 && verifyOtp()}
                 />
-                <Button onClick={verifyOtp} disabled={busy || code.length !== 6} className="w-full">
+                <Button
+                  onClick={verifyOtp}
+                  disabled={code.length !== 6}
+                  loading={busy}
+                  loadingLabel={t("login.verifying")}
+                  className="w-full"
+                >
                   {t("login.submit")}
                 </Button>
                 <button

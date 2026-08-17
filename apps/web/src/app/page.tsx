@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LanguageToggle, Logo } from "@/components/ui";
+import { LanguageToggle, LoadingState, Logo } from "@/components/ui";
 import { restoreSession } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -24,11 +24,7 @@ export default function Home() {
   }, [router]);
 
   if (checkingSession) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-50 text-sm text-zinc-500">
-        {t("auth.restoring")}
-      </main>
-    );
+    return <LoadingState fullScreen title={t("auth.restoring")} description={t("loading.wait")} />;
   }
 
   return (
@@ -48,7 +44,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center gap-6 px-6 py-20 text-center">
+      <section className="sp-content-reveal mx-auto flex max-w-3xl flex-1 flex-col items-center justify-center gap-6 px-6 py-20 text-center">
         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-medium text-emerald-700">
           {t("landing.badge")}
         </span>

@@ -21,6 +21,7 @@ import {
   Button,
   Callout,
   Card,
+  LoadingState,
   inputClass,
   StatCard,
   tableCellClass,
@@ -168,6 +169,7 @@ export default function MyIncomePage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [copiedAlertId, setCopiedAlertId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +216,8 @@ export default function MyIncomePage() {
           setTaxReadiness(taxData);
         },
       )
-      .catch(guard);
+      .catch(guard)
+      .finally(() => setInitialLoading(false));
   }, [router, guard]);
 
   const refreshGrants = useCallback(() => {
@@ -473,6 +476,10 @@ export default function MyIncomePage() {
     setCustomPurpose(null);
     setRangeMonths(preset.range);
     setExpiresInDays(preset.expiry);
+  }
+
+  if (initialLoading) {
+    return <LoadingState fullScreen title={t("loading.income")} description={t("loading.wait")} />;
   }
 
   return (

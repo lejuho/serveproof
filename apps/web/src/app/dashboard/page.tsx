@@ -20,6 +20,7 @@ import {
   Button,
   Callout,
   Card,
+  LoadingState,
   inputClass,
   tableCellClass,
   tableHeadClass,
@@ -125,6 +126,7 @@ const PAYOUT_VERIFICATION_ERRORS = [
   "Previous payout blockhash is still valid",
   "Payout transaction blockhash is still valid",
 ];
+const DEFAULT_BUSINESS_DATE = "2026-08-05";
 
 function isPayoutVerificationError(message: string): boolean {
   return PAYOUT_VERIFICATION_ERRORS.some((fragment) => message.includes(fragment));
@@ -192,7 +194,7 @@ export default function DashboardPage() {
   const [csvText, setCsvText] = useState("");
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
   const [unmapped, setUnmapped] = useState<UnmappedResponse | null>(null);
-  const [businessDate, setBusinessDate] = useState("2026-08-05");
+  const [businessDate, setBusinessDate] = useState(DEFAULT_BUSINESS_DATE);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [payoutProgress, setPayoutProgress] = useState<Record<string, string>>({});
   // Legacy 증빙 인라인 입력 — 열려 있는 행 id와 참조번호 입력값
@@ -220,6 +222,7 @@ export default function DashboardPage() {
   const [settlementClose, setSettlementClose] = useState<SettlementClose | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [workspace, setWorkspace] = useState<"staffing" | "settlement">("settlement");
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   // React state does not update synchronously, so `busy` alone cannot stop two
@@ -245,13 +248,32 @@ export default function DashboardPage() {
     setAvailableModes(getCurrentSession()?.modes ?? []);
     void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
     api<Organization[]>("/organizations/mine")
-      .then((data) => {
+      .then(async (data) => {
         setAvailableModes(getCurrentSession()?.modes ?? []);
         setOrgs(data);
         const firstVenue = data.flatMap((o) => o.venues)[0];
-        if (firstVenue) setVenueId(firstVenue.id);
+        if (!firstVenue) return;
+
+        setVenueId(firstVenue.id);
+        const [unmappedData, actionData, connectionsData, closeData, venueData] = await Promise.all(
+          [
+            api<UnmappedResponse>(`/venues/${firstVenue.id}/unmapped-workers`),
+            api<typeof actionItems>(`/venues/${firstVenue.id}/action-items`),
+            api<WorkerConnectionsResponse>(`/venues/${firstVenue.id}/worker-connections`),
+            api<SettlementClose>(
+              `/venues/${firstVenue.id}/settlement-close?businessDate=${encodeURIComponent(DEFAULT_BUSINESS_DATE)}`,
+            ),
+            api<{ payoutSignerWallet: string | null }>(`/venues/${firstVenue.id}`),
+          ],
+        );
+        setUnmapped(unmappedData);
+        setActionItems(actionData);
+        setWorkerConnections(connectionsData);
+        setSettlementClose(closeData);
+        setVenueSigner(venueData.payoutSignerWallet);
       })
-      .catch(guard);
+      .catch(guard)
+      .finally(() => setInitialLoading(false));
   }, [router, guard]);
 
   const refreshUnmapped = useCallback(() => {
@@ -538,6 +560,12 @@ export default function DashboardPage() {
     });
 
   const payable = batch && ["PAYABLE", "PARTIALLY_PAID", "PAID"].includes(batch.status);
+
+  if (initialLoading) {
+    return (
+      <LoadingState fullScreen title={t("loading.dashboard")} description={t("loading.wait")} />
+    );
+  }
 
   return (
     <AppShell
