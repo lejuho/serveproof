@@ -48,6 +48,8 @@ export class EvidenceService {
           grossAmountUsdCents: tip.grossAmountUsdCents,
           businessDate: tip.businessDate,
           sourceHash: tip.sourceHash,
+          sourcePayoutRail: tip.sourcePayoutRail,
+          sourcePayrollStatus: tip.sourcePayrollStatus,
         },
         create: {
           venueId,
@@ -57,6 +59,8 @@ export class EvidenceService {
           grossAmountUsdCents: tip.grossAmountUsdCents,
           businessDate: tip.businessDate,
           sourceHash: tip.sourceHash,
+          sourcePayoutRail: tip.sourcePayoutRail,
+          sourcePayrollStatus: tip.sourcePayrollStatus,
         },
       });
       tipsUpserted++;
@@ -85,6 +89,8 @@ export class EvidenceService {
           workedMinutes: shift.workedMinutes,
           businessDate: shift.businessDate,
           sourceHash: shift.sourceHash,
+          sourcePayoutRail: shift.sourcePayoutRail,
+          sourcePayrollStatus: shift.sourcePayrollStatus,
         },
         create: {
           venueId,
@@ -98,6 +104,8 @@ export class EvidenceService {
           workedMinutes: shift.workedMinutes,
           businessDate: shift.businessDate,
           sourceHash: shift.sourceHash,
+          sourcePayoutRail: shift.sourcePayoutRail,
+          sourcePayrollStatus: shift.sourcePayrollStatus,
         },
       });
       shiftsUpserted++;

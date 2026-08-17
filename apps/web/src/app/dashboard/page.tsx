@@ -59,7 +59,40 @@ interface Allocation {
   netAllocatedUsdCents: number;
   payoutStatus: "UNPAID" | "PENDING" | "PAID" | "FAILED";
   payoutRail: string | null;
+  plannedPayoutRail: string | null;
   worker: { defaultWalletId: string | null; user: { displayName: string } };
+}
+interface SettlementClose {
+  businessDate: string;
+  batch: { id: string; status: string } | null;
+  cash: {
+    workerCount: number;
+    totalUsdCents: number;
+    remainingUsdCents: number;
+    observedUsdCents: number;
+    retainedUsdCents: number;
+    drawerUsdCents: number;
+  };
+  payroll: { workerCount: number; totalUsdCents: number; remainingUsdCents: number };
+  usdc: {
+    workerCount: number;
+    totalUsdCents: number;
+    remainingUsdCents: number;
+    missingWalletCount: number;
+  };
+  unassigned: { workerCount: number; totalUsdCents: number };
+  treasury: {
+    status: "AVAILABLE" | "UNAVAILABLE" | "MISCONFIGURED";
+    checkedAt: string;
+    vaultAddress: string | null;
+    vaultBalanceUsdCents: number | null;
+    requiredUsdCents: number;
+    differenceUsdCents: number | null;
+    signerWallet: string | null;
+    signerSolLamports: number | null;
+    error?: string;
+  };
+  testAssetWarning: string;
 }
 interface Batch {
   id: string;
@@ -102,6 +135,10 @@ function isPayoutBlockhashExpiredError(message: string): boolean {
 
 function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function tusdc(cents: number): string {
+  return `${(cents / 100).toFixed(2)} tUSDC`;
 }
 
 export default function DashboardPage() {
@@ -179,6 +216,7 @@ export default function DashboardPage() {
   const [workerConnections, setWorkerConnections] = useState<WorkerConnectionsResponse | null>(
     null,
   );
+  const [settlementClose, setSettlementClose] = useState<SettlementClose | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
@@ -222,6 +260,19 @@ export default function DashboardPage() {
       .then(setWorkerConnections)
       .catch(guard);
   }, [venueId, guard]);
+
+  const refreshSettlementClose = useCallback(() => {
+    if (!venueId || !businessDate) return;
+    api<SettlementClose>(
+      `/venues/${venueId}/settlement-close?businessDate=${encodeURIComponent(businessDate)}`,
+    )
+      .then(setSettlementClose)
+      .catch(guard);
+  }, [venueId, businessDate, guard]);
+
+  useEffect(() => {
+    refreshSettlementClose();
+  }, [refreshSettlementClose]);
 
   useEffect(() => {
     refreshUnmapped();
@@ -314,6 +365,7 @@ export default function DashboardPage() {
         body: { venueId, businessDate },
       });
       setBatch(result);
+      refreshSettlementClose();
     });
 
   const approve = () =>
@@ -322,6 +374,7 @@ export default function DashboardPage() {
       await api(`/allocation-batches/${batch.id}/approve`, { method: "POST", body: {} });
       await refreshBatch();
       refreshUnmapped();
+      refreshSettlementClose();
     });
 
   const scrollToCard = (id: string) =>
@@ -419,25 +472,57 @@ export default function DashboardPage() {
       if (!terminal) setProgress(allocationId, t("dash.progress.verifying"));
       await refreshBatch();
       refreshUnmapped();
+      refreshSettlementClose();
     }
   };
 
-  const payLegacy = (allocationId: string, reference: string) =>
+  const payLegacy = (allocation: Allocation, reference: string) =>
     run(async () => {
       try {
         await api("/payouts/legacy-evidence", {
           method: "POST",
-          body: { allocationId, rail: "PAYROLL", externalReference: reference },
+          body: {
+            allocationId: allocation.id,
+            rail:
+              allocation.plannedPayoutRail && allocation.plannedPayoutRail !== "USDC"
+                ? allocation.plannedPayoutRail
+                : "PAYROLL",
+            externalReference: reference,
+          },
         });
-        setProgress(allocationId, t("dash.progress.legacyDone"));
+        setProgress(allocation.id, t("dash.progress.legacyDone"));
         setLegacyOpenFor(null);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        setProgress(allocationId, `${t("dash.progress.failed")}: ${message}`);
+        setProgress(allocation.id, `${t("dash.progress.failed")}: ${message}`);
         throw e;
       }
       await refreshBatch();
       refreshUnmapped();
+      refreshSettlementClose();
+    });
+
+  const setPlannedRail = (allocationId: string, rail: string) =>
+    run(async () => {
+      await api(`/allocation-batches/allocations/${allocationId}/planned-rail`, {
+        method: "PATCH",
+        body: { rail },
+      });
+      await refreshBatch();
+      refreshSettlementClose();
+    });
+
+  const exportPayroll = () =>
+    run(async () => {
+      const result = await api<{ filename: string; csv: string }>(
+        `/venues/${venueId}/payroll-export?businessDate=${encodeURIComponent(businessDate)}`,
+      );
+      const url = URL.createObjectURL(new Blob([result.csv], { type: "text/csv;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
     });
 
   const rebuildIncome = () =>
@@ -644,7 +729,8 @@ export default function DashboardPage() {
                   {!!importResult.businessDates?.length && (
                     <span className="text-emerald-700">
                       {" "}
-                      . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로 자동 선택했습니다.
+                      . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로 자동
+                      선택했습니다.
                     </span>
                   )}
                 </>
@@ -659,7 +745,8 @@ export default function DashboardPage() {
                   {!!importResult.businessDates?.length && (
                     <span className="text-emerald-700">
                       {" "}
-                      . Detected {importResult.businessDates.join(", ")}; calculation date was selected automatically.
+                      . Detected {importResult.businessDates.join(", ")}; calculation date was
+                      selected automatically.
                     </span>
                   )}
                 </>
@@ -752,6 +839,9 @@ export default function DashboardPage() {
                   <tr>
                     <th className={tableHeadClass}>{t("worker")}</th>
                     <th className={`${tableHeadClass} text-right`}>{t("amount")}</th>
+                    <th className={tableHeadClass}>
+                      {locale === "ko" ? "정산 경로" : "Settlement route"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -761,6 +851,22 @@ export default function DashboardPage() {
                       <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
                         {usd(a.netAllocatedUsdCents)}
                       </td>
+                      <td className={tableCellClass}>
+                        <select
+                          className={`${inputClass} py-1.5 text-sm`}
+                          value={a.plannedPayoutRail ?? ""}
+                          onChange={(e) => setPlannedRail(a.id, e.target.value)}
+                          disabled={busy}
+                        >
+                          <option value="" disabled>
+                            {locale === "ko" ? "미지정" : "Unassigned"}
+                          </option>
+                          <option value="CASH_RETAINED">CASH_RETAINED</option>
+                          <option value="CASH_DRAWER">CASH_DRAWER</option>
+                          <option value="PAYROLL">PAYROLL</option>
+                          <option value="USDC">USDC</option>
+                        </select>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -769,6 +875,116 @@ export default function DashboardPage() {
           </div>
         )}
       </Card>
+
+      {settlementClose && (
+        <Card
+          title={locale === "ko" ? "정산 경로별 마감" : "Settlement close by route"}
+          description={
+            locale === "ko"
+              ? "현금·급여·USDC마다 필요한 마감 작업과 준비 상태를 분리해서 확인합니다."
+              : "Review close tasks and readiness separately for cash, payroll, and USDC."
+          }
+        >
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-zinc-200 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Cash</p>
+              <p className="mt-2 text-2xl font-bold tabular-nums">
+                {usd(settlementClose.cash.observedUsdCents)}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {locale === "ko" ? "관측 현금 팁" : "Observed cash tips"} ·{" "}
+                {settlementClose.cash.workerCount}
+                {locale === "ko" ? "명" : " workers"}
+              </p>
+              <p className="mt-3 text-xs text-zinc-500">
+                {locale === "ko" ? "직원 보유" : "Retained"}{" "}
+                {usd(settlementClose.cash.retainedUsdCents)} ·{" "}
+                {locale === "ko" ? "금고/서랍" : "Drawer"}{" "}
+                {usd(settlementClose.cash.drawerUsdCents)}
+              </p>
+              <p className="mt-2 text-xs font-medium text-emerald-700">
+                {locale === "ko"
+                  ? "직원 보유분은 추가 지급 없이 신고만 확인합니다."
+                  : "Retained cash needs reporting confirmation, not another payout."}
+              </p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Payroll</p>
+              <p className="mt-2 text-2xl font-bold tabular-nums">
+                {usd(settlementClose.payroll.remainingUsdCents)}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {settlementClose.payroll.workerCount}
+                {locale === "ko" ? "명 · 급여 반영 필요" : " workers · remaining"}
+              </p>
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="secondary"
+                onClick={exportPayroll}
+                disabled={busy || !settlementClose.batch}
+              >
+                {locale === "ko" ? "급여 CSV 내보내기" : "Export payroll CSV"}
+              </Button>
+            </div>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-500">
+                USDC · Devnet
+              </p>
+              <p className="mt-2 text-2xl font-bold tabular-nums">
+                {usd(settlementClose.usdc.remainingUsdCents)}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {settlementClose.usdc.workerCount}
+                {locale === "ko" ? "명" : " workers"} ·{" "}
+                {locale === "ko" ? "지갑 누락" : "missing wallets"}{" "}
+                {settlementClose.usdc.missingWalletCount}
+              </p>
+              <div className="mt-3 space-y-1 text-xs text-zinc-600">
+                <p>
+                  {locale === "ko" ? "vault tUSDC" : "Vault tUSDC"}:{" "}
+                  {settlementClose.treasury.vaultBalanceUsdCents === null
+                    ? "—"
+                    : tusdc(settlementClose.treasury.vaultBalanceUsdCents)}
+                </p>
+                <p>
+                  {locale === "ko" ? "이번 마감 필요" : "Required for close"}:{" "}
+                  {tusdc(settlementClose.treasury.requiredUsdCents)}
+                </p>
+                <p>
+                  {locale === "ko" ? "부족/여유" : "Shortfall/surplus"}:{" "}
+                  {settlementClose.treasury.differenceUsdCents === null
+                    ? "—"
+                    : `${settlementClose.treasury.differenceUsdCents >= 0 ? "+" : ""}${tusdc(settlementClose.treasury.differenceUsdCents)}`}
+                </p>
+                <p>
+                  {locale === "ko" ? "Signer SOL" : "Signer SOL"}:{" "}
+                  {settlementClose.treasury.signerSolLamports === null
+                    ? "—"
+                    : `${(settlementClose.treasury.signerSolLamports / 1_000_000_000).toFixed(4)} SOL`}
+                </p>
+                <p>
+                  {locale === "ko" ? "마지막 RPC 확인" : "Last RPC check"}:{" "}
+                  {new Date(settlementClose.treasury.checkedAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+          {settlementClose.unassigned.workerCount > 0 && (
+            <Callout tone="amber">
+              {locale === "ko"
+                ? `정산 경로 미지정 ${settlementClose.unassigned.workerCount}명 · ${usd(settlementClose.unassigned.totalUsdCents)}`
+                : `${settlementClose.unassigned.workerCount} workers (${usd(settlementClose.unassigned.totalUsdCents)}) have no settlement route.`}
+            </Callout>
+          )}
+          <Callout tone="amber">
+            {locale === "ko"
+              ? "Devnet tUSDC는 금전 가치가 없는 테스트 자산입니다."
+              : settlementClose.testAssetWarning}
+            {settlementClose.treasury.error ? ` · ${settlementClose.treasury.error}` : ""}
+          </Callout>
+        </Card>
+      )}
 
       {batch && payable && (
         <Card step={4} title={t("dash.payout.title")} description={t("dash.payout.desc")}>
@@ -821,10 +1037,31 @@ export default function DashboardPage() {
                   <td className={tableCellClass}>
                     <Badge tone={a.payoutStatus}>
                       {statusLabel(a.payoutStatus)}
-                      {a.payoutRail ? ` · ${a.payoutRail}` : ""}
+                      {a.payoutRail
+                        ? ` · ${a.payoutRail}`
+                        : a.plannedPayoutRail
+                          ? ` · ${locale === "ko" ? "예정" : "planned"} ${a.plannedPayoutRail}`
+                          : ""}
                     </Badge>
                     {payoutProgress[a.id] && (
                       <span className="ml-2 text-xs text-zinc-400">{payoutProgress[a.id]}</span>
+                    )}
+                    {a.payoutStatus !== "PAID" && (
+                      <select
+                        aria-label={locale === "ko" ? "예정 정산 경로" : "Planned settlement route"}
+                        className="mt-2 block rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600"
+                        value={a.plannedPayoutRail ?? ""}
+                        onChange={(e) => setPlannedRail(a.id, e.target.value)}
+                        disabled={busy}
+                      >
+                        <option value="" disabled>
+                          {locale === "ko" ? "경로 미지정" : "Unassigned"}
+                        </option>
+                        <option value="CASH_RETAINED">CASH_RETAINED</option>
+                        <option value="CASH_DRAWER">CASH_DRAWER</option>
+                        <option value="PAYROLL">PAYROLL</option>
+                        <option value="USDC">USDC</option>
+                      </select>
                     )}
                   </td>
                   <td className={tableCellClass}>
@@ -854,14 +1091,14 @@ export default function DashboardPage() {
                               placeholder={t("dash.payout.refPlaceholder")}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" && legacyRef.trim())
-                                  payLegacy(a.id, legacyRef.trim());
+                                  payLegacy(a, legacyRef.trim());
                                 if (e.key === "Escape") setLegacyOpenFor(null);
                               }}
                             />
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => payLegacy(a.id, legacyRef.trim())}
+                              onClick={() => payLegacy(a, legacyRef.trim())}
                               disabled={busy || !legacyRef.trim()}
                             >
                               {t("dash.payout.refConfirm")}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { z } from "zod";
 import { AccessService, VENUE_MANAGE_ROLES, VENUE_READ_ROLES } from "../auth/access.service";
 import { CurrentUser, type AuthenticatedUser } from "../auth/current-user.decorator";
@@ -12,6 +12,16 @@ const calculateSchema = z.object({
 });
 
 const rejectSchema = z.object({ reason: z.string().min(1) });
+const plannedRailSchema = z.object({
+  rail: z.enum([
+    "CASH_RETAINED",
+    "CASH_DRAWER",
+    "PAYROLL",
+    "PAYOUT_PROVIDER",
+    "BANK_REFERENCE",
+    "USDC",
+  ]),
+});
 
 @Controller("allocation-batches")
 export class AllocationsController {
@@ -52,5 +62,17 @@ export class AllocationsController {
     const batch = await this.allocations.getBatch(id);
     await this.access.assertVenueRole(user.id, batch.venueId, VENUE_MANAGE_ROLES);
     return this.allocations.reject(id, user.id, reason);
+  }
+
+  @Patch("allocations/:allocationId/planned-rail")
+  async setPlannedRail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("allocationId") allocationId: string,
+    @Body() body: unknown,
+  ) {
+    const { rail } = parseBody(plannedRailSchema, body);
+    const allocation = await this.allocations.getAllocation(allocationId);
+    await this.access.assertVenueRole(user.id, allocation.batch.venueId, VENUE_MANAGE_ROLES);
+    return this.allocations.setPlannedRail(allocationId, rail, user.id);
   }
 }

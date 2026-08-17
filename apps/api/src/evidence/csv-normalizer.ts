@@ -13,6 +13,8 @@ export interface NormalizedTipEvidence {
   grossAmountUsdCents: number;
   businessDate: string;
   sourceHash: string;
+  sourcePayoutRail: CsvEvidenceRow["payout_route"];
+  sourcePayrollStatus: string;
 }
 
 export interface NormalizedShiftEvidence {
@@ -25,6 +27,8 @@ export interface NormalizedShiftEvidence {
   workedMinutes: number;
   businessDate: string;
   sourceHash: string;
+  sourcePayoutRail: CsvEvidenceRow["payout_route"];
+  sourcePayrollStatus: string;
 }
 
 export interface CsvNormalizationResult {
@@ -113,6 +117,8 @@ export function normalizeCsv(csvText: string, venueTimezone: string): CsvNormali
       workedMinutes,
       businessDate,
       sourceHash: rowHash,
+      sourcePayoutRail: row.payout_route,
+      sourcePayrollStatus: row.payroll_status,
     });
 
     const grossCents = parseUsdToCents(row.gross_tip);
@@ -124,6 +130,8 @@ export function normalizeCsv(csvText: string, venueTimezone: string): CsvNormali
         grossAmountUsdCents: grossCents,
         businessDate,
         sourceHash: rowHash,
+        sourcePayoutRail: row.payout_route,
+        sourcePayrollStatus: row.payroll_status,
       });
     }
   }

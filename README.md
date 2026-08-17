@@ -26,7 +26,10 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 - 외부 직원 ID 매핑, source hash 기반 멱등 evidence 저장
 - 시간·역할 가중 팁 배분, 정책 버전 관리, 검토 및 승인 상태 머신
 - Payroll/legacy 지급 증빙과 Solana Devnet tUSDC 정산
+- CSV의 정산 경로를 배분 계획에 보존하고, 현금·급여·USDC별 마감 상태와 급여 CSV 내보내기 제공
+- Devnet vault tUSDC·필요액·부족/여유·RPC 확인 시각·signer SOL 잔고를 한 화면에서 조회
 - 소득 ledger, payroll 관측, discrepancy 및 correction 기록
+- 급여/원천징수 기록과 아직 연결되지 않은 금액을 보여주는 보수적인 세금 준비 알림(Devnet 자산 제외)
 - 선택 공개 PDF·QR, 만료·철회·정정 상태가 반영되는 공개 검증 페이지
 - BullMQ 기반 provider sync, Solana confirmation/reconciliation, report expiry 작업
 

@@ -26,7 +26,10 @@ The next sequence is **staging seed → Worker operations check → deployment s
 - External worker ID mapping and source-hash-based idempotent evidence storage
 - Time- and role-weighted tip allocation, policy versioning, review, and approval state machine
 - Payroll/legacy payment evidence and Solana Devnet tUSDC settlement
+- Settlement-route intent preserved from CSV through allocation planning, with cash/payroll/USDC close lanes and payroll CSV export
+- Read-only Devnet treasury status for vault tUSDC, required amount, shortfall/surplus, RPC check time, and signer SOL balance
 - Income ledger, payroll observations, discrepancies, and correction records
+- Conservative tax-readiness notice for amounts not yet matched to payroll/withholding records, excluding Devnet test assets
 - Selective-disclosure PDF and QR reports with expiration, revocation, and correction-aware public verification
 - BullMQ jobs for provider sync, Solana confirmation/reconciliation, and report expiration
 

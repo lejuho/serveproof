@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { AccessService, VENUE_MANAGE_ROLES, VENUE_READ_ROLES } from "../auth/access.service";
 import { CurrentUser, type AuthenticatedUser } from "../auth/current-user.decorator";
@@ -27,6 +27,9 @@ const createVenueSchema = z.object({
 // Base58, 32–44 chars — shape check only; on-chain validity is Phase 2's concern.
 const solanaAddress = z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
 const venueWalletSchema = z.object({ payoutSignerWallet: solanaAddress });
+const closeQuerySchema = z.object({
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
 
 @Controller()
 export class OrganizationsController {
@@ -79,6 +82,28 @@ export class OrganizationsController {
   async workerConnections(@CurrentUser() user: AuthenticatedUser, @Param("id") venueId: string) {
     await this.access.assertVenueRole(user.id, venueId, VENUE_READ_ROLES);
     return this.organizations.workerConnections(venueId);
+  }
+
+  @Get("venues/:id/settlement-close")
+  async settlementClose(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") venueId: string,
+    @Query("businessDate") businessDate: string,
+  ) {
+    const query = parseBody(closeQuerySchema, { businessDate });
+    await this.access.assertVenueRole(user.id, venueId, VENUE_READ_ROLES);
+    return this.organizations.settlementClose(venueId, query.businessDate);
+  }
+
+  @Get("venues/:id/payroll-export")
+  async payrollExport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") venueId: string,
+    @Query("businessDate") businessDate: string,
+  ) {
+    const query = parseBody(closeQuerySchema, { businessDate });
+    await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
+    return this.organizations.payrollExport(venueId, query.businessDate, user.id);
   }
 
   @Post("venues/:id/wallet")

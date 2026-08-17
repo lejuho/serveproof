@@ -14,6 +14,16 @@ import {
 } from "@serveproof/shared";
 import { PrismaService } from "../prisma/prisma.service";
 
+const SETTLEMENT_RAILS = [
+  "CASH_RETAINED",
+  "CASH_DRAWER",
+  "PAYROLL",
+  "PAYOUT_PROVIDER",
+  "BANK_REFERENCE",
+  "USDC",
+] as const;
+type SettlementRail = (typeof SETTLEMENT_RAILS)[number];
+
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -92,6 +102,18 @@ export class AllocationsService {
     };
 
     const result = computeAllocationBatch(engineTips, engineShifts, enginePolicy);
+    const plannedRailByWorker = new Map<string, SettlementRail>();
+    const conflictingRailWorkers = new Set<string>();
+    for (const shift of shifts) {
+      if (!shift.mappedWorkerId || !shift.sourcePayoutRail) continue;
+      const previous = plannedRailByWorker.get(shift.mappedWorkerId);
+      if (previous && previous !== shift.sourcePayoutRail) {
+        conflictingRailWorkers.add(shift.mappedWorkerId);
+        plannedRailByWorker.delete(shift.mappedWorkerId);
+      } else if (!conflictingRailWorkers.has(shift.mappedWorkerId)) {
+        plannedRailByWorker.set(shift.mappedWorkerId, shift.sourcePayoutRail);
+      }
+    }
     const hasBlockingIssue = result.issues.some((i) => i.blocking);
     const status = hasBlockingIssue ? "REVIEW_REQUIRED" : "CALCULATED";
 
@@ -154,6 +176,7 @@ export class AllocationsService {
             workerId: a.workerId,
             pooledTipUsdCents: a.pooledTipUsdCents,
             netAllocatedUsdCents: a.netAllocatedUsdCents,
+            plannedPayoutRail: plannedRailByWorker.get(a.workerId) ?? null,
           })),
         });
       }
@@ -174,6 +197,15 @@ export class AllocationsService {
     });
     if (!batch) throw new NotFoundException(`Batch ${id} not found`);
     return batch;
+  }
+
+  async getAllocation(id: string) {
+    const allocation = await this.prisma.workerAllocation.findUnique({
+      where: { id },
+      include: { batch: { select: { venueId: true } } },
+    });
+    if (!allocation) throw new NotFoundException(`Allocation ${id} not found`);
+    return allocation;
   }
 
   /**
@@ -230,6 +262,34 @@ export class AllocationsService {
           entityType: "AllocationBatch",
           entityId: id,
           detail: { reason },
+        },
+      }),
+    ]);
+    return updated;
+  }
+
+  async setPlannedRail(allocationId: string, rail: SettlementRail, actorUserId: string) {
+    const allocation = await this.prisma.workerAllocation.findUnique({
+      where: { id: allocationId },
+      include: { batch: { select: { venueId: true, status: true } } },
+    });
+    if (!allocation) throw new NotFoundException(`Allocation ${allocationId} not found`);
+    if (allocation.payoutStatus === "PAID") {
+      throw new ConflictException("A paid allocation's settlement route cannot be changed");
+    }
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.workerAllocation.update({
+        where: { id: allocationId },
+        data: { plannedPayoutRail: rail },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          venueId: allocation.batch.venueId,
+          actorUserId,
+          action: "ALLOCATION_PLANNED_RAIL_CHANGED",
+          entityType: "WorkerAllocation",
+          entityId: allocationId,
+          detail: { previous: allocation.plannedPayoutRail, next: rail },
         },
       }),
     ]);

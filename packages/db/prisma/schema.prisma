@@ -276,6 +276,10 @@ model TipEvidence {
   businessDate        String // YYYY-MM-DD in venue timezone
   sourcePayloadUri    String?
   sourceHash          String
+  // Settlement intent supplied by the source. This is planning metadata,
+  // distinct from the immutable rail recorded after an actual payout.
+  sourcePayoutRail    WorkerPayoutRail?
+  sourcePayrollStatus String?
   observedAt          DateTime             @default(now())
 
   venue Venue @relation(fields: [venueId], references: [id])
@@ -292,21 +296,23 @@ enum ShiftStatus {
 }
 
 model ShiftEvidence {
-  id               String               @id @default(uuid())
-  provider         String
-  ingestSource     EvidenceIngestSource @default(CSV_UPLOAD)
-  venueId          String
-  externalShiftId  String
-  externalWorkerId String
-  mappedWorkerId   String?
-  role             String
-  clockIn          DateTime
-  clockOut         DateTime?
-  workedMinutes    Int                  @default(0)
-  shiftStatus      ShiftStatus          @default(COMPLETED)
-  businessDate     String // YYYY-MM-DD in venue timezone
-  sourceHash       String
-  observedAt       DateTime             @default(now())
+  id                  String               @id @default(uuid())
+  provider            String
+  ingestSource        EvidenceIngestSource @default(CSV_UPLOAD)
+  venueId             String
+  externalShiftId     String
+  externalWorkerId    String
+  mappedWorkerId      String?
+  role                String
+  clockIn             DateTime
+  clockOut            DateTime?
+  workedMinutes       Int                  @default(0)
+  shiftStatus         ShiftStatus          @default(COMPLETED)
+  businessDate        String // YYYY-MM-DD in venue timezone
+  sourceHash          String
+  sourcePayoutRail    WorkerPayoutRail?
+  sourcePayrollStatus String?
+  observedAt          DateTime             @default(now())
 
   venue         Venue         @relation(fields: [venueId], references: [id])
   incomeEntries IncomeEntry[]
@@ -416,6 +422,7 @@ model WorkerAllocation {
   tipOutGivenUsdCents    Int                          @default(0)
   tipOutReceivedUsdCents Int                          @default(0)
   netAllocatedUsdCents   Int                          @default(0)
+  plannedPayoutRail      WorkerPayoutRail?
   payoutRail             WorkerPayoutRail?
   payoutStatus           WorkerAllocationPayoutStatus @default(UNPAID)
 

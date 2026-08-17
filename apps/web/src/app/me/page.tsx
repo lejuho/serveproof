@@ -98,6 +98,15 @@ interface Me {
   user: { email: string; displayName: string };
   wallets: { id: string; address: string; isDefault: boolean; status: string }[];
 }
+interface TaxReadiness {
+  year: number;
+  unmatchedUsdCents: number;
+  withholdingUnknownUsdCents: number;
+  devnetTestUsdCents: number;
+  byRail: Record<string, number>;
+  guidance: { tipIncome: string; withholding: string; estimatedTax: string };
+  disclaimer: string;
+}
 
 function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -135,6 +144,8 @@ export default function MyIncomePage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [venueConnections, setVenueConnections] = useState<VenueConnection[]>([]);
+  const [taxReadiness, setTaxReadiness] = useState<TaxReadiness | null>(null);
+  const [reserveRate, setReserveRate] = useState("20");
   const [level, setLevel] = useState("LEVEL_2");
   const [purposeKey, setPurposeKey] = useState("me.share.preset.rent.purpose");
   const [customPurpose, setCustomPurpose] = useState<string | null>(null);
@@ -178,16 +189,20 @@ export default function MyIncomePage() {
       api<Alert[]>("/workers/me/discrepancies"),
       api<Grant[]>("/disclosures"),
       api<VenueConnection[]>("/workers/me/venue-connections"),
+      api<TaxReadiness>("/workers/me/tax-readiness"),
     ])
-      .then(([meData, timelineData, summaryData, alertData, grantData, connectionData]) => {
-        setAvailableModes(getCurrentSession()?.modes ?? []);
-        setMe(meData);
-        setTimeline(timelineData);
-        setSummary(summaryData);
-        setAlerts(alertData);
-        setGrants(grantData);
-        setVenueConnections(connectionData);
-      })
+      .then(
+        ([meData, timelineData, summaryData, alertData, grantData, connectionData, taxData]) => {
+          setAvailableModes(getCurrentSession()?.modes ?? []);
+          setMe(meData);
+          setTimeline(timelineData);
+          setSummary(summaryData);
+          setAlerts(alertData);
+          setGrants(grantData);
+          setVenueConnections(connectionData);
+          setTaxReadiness(taxData);
+        },
+      )
       .catch(guard);
   }, [router, guard]);
 
@@ -489,6 +504,81 @@ export default function MyIncomePage() {
       )}
 
       <VenueConnectionCards connections={venueConnections} locale={locale} />
+
+      {taxReadiness && (
+        <Card
+          title={
+            locale === "ko"
+              ? `${taxReadiness.year} 세금 준비`
+              : `${taxReadiness.year} tax readiness`
+          }
+          description={
+            locale === "ko"
+              ? "급여 신고 또는 원천징수 기록과 아직 연결되지 않은 지급액을 미리 확인합니다."
+              : "Review paid income not yet matched to payroll or withholding records."
+          }
+        >
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <p className="text-3xl font-bold tracking-tight tabular-nums">
+                {usd(taxReadiness.unmatchedUsdCents)}
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                {locale === "ko"
+                  ? "세금 신고 또는 예상 납부 준비가 필요할 수 있는 금액"
+                  : "Amount that may require filing or estimated-payment planning"}
+              </p>
+            </div>
+            <label className="text-sm text-zinc-600">
+              {locale === "ko" ? "개인 준비율" : "Personal reserve rate"}
+              <select
+                className={`${inputClass} mt-1`}
+                value={reserveRate}
+                onChange={(e) => setReserveRate(e.target.value)}
+              >
+                {[10, 15, 20, 25, 30].map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}%
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm">
+            {locale === "ko" ? "준비용 적립 예시" : "Planning reserve example"}:{" "}
+            <b>{usd(Math.round((taxReadiness.unmatchedUsdCents * Number(reserveRate)) / 100))}</b>
+          </div>
+          {taxReadiness.devnetTestUsdCents > 0 && (
+            <Callout tone="amber">
+              {locale === "ko"
+                ? `Devnet tUSDC ${usd(taxReadiness.devnetTestUsdCents)}는 금전 가치가 없는 테스트 자산이므로 위 계산에서 제외했습니다.`
+                : `${usd(taxReadiness.devnetTestUsdCents)} of Devnet tUSDC is excluded because it has no monetary value.`}
+            </Callout>
+          )}
+          <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+            {locale === "ko"
+              ? "세무 자문이나 실제 세액 계산이 아닙니다. 개인 상황은 세무 전문가에게 확인하세요."
+              : taxReadiness.disclaimer}{" "}
+            <a
+              className="font-medium text-emerald-700 underline"
+              href={taxReadiness.guidance.tipIncome}
+              target="_blank"
+              rel="noreferrer"
+            >
+              IRS tip guidance
+            </a>
+            {" · "}
+            <a
+              className="font-medium text-emerald-700 underline"
+              href={taxReadiness.guidance.estimatedTax}
+              target="_blank"
+              rel="noreferrer"
+            >
+              IRS Publication 505
+            </a>
+          </p>
+        </Card>
+      )}
 
       <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
         {alerts.length === 0 ? (

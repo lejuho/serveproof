@@ -242,7 +242,20 @@ describe("ServeProof API integration", () => {
       tipPoolAmountUsdCents: 1000,
     });
     expect(calculated.body.allocations).toHaveLength(1);
+    expect(calculated.body.allocations[0].plannedPayoutRail).toBe("USDC");
     const batchId = calculated.body.id as string;
+
+    await api()
+      .patch(`/allocation-batches/allocations/${calculated.body.allocations[0].id}/planned-rail`)
+      .set(bearer(viewer))
+      .send({ rail: "PAYROLL" })
+      .expect(403);
+    await api()
+      .patch(`/allocation-batches/allocations/${calculated.body.allocations[0].id}/planned-rail`)
+      .set(bearer(manager))
+      .send({ rail: "PAYROLL" })
+      .expect(200)
+      .expect(({ body }) => expect(body.plannedPayoutRail).toBe("PAYROLL"));
 
     await api().post(`/allocation-batches/${batchId}/approve`).set(bearer(viewer)).expect(403);
     await api()

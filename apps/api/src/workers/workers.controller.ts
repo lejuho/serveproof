@@ -24,6 +24,11 @@ export class WorkersController {
     return this.workers.venueConnections(user.id);
   }
 
+  @Get("tax-readiness")
+  taxReadiness(@CurrentUser() user: AuthenticatedUser) {
+    return this.workers.taxReadiness(user.id);
+  }
+
   @Post("wallets")
   addWallet(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     return this.workers.addWallet(user.id, parseBody(addWalletSchema, body));

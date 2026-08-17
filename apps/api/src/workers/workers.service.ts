@@ -116,6 +116,56 @@ export class WorkersService {
     });
   }
 
+  /** Planning signal only: amounts not yet matched to payroll/withholding evidence. */
+  async taxReadiness(userId: string) {
+    const worker = await this.getWorkerByUserId(userId);
+    const year = new Date().getUTCFullYear();
+    const yearStart = new Date(Date.UTC(year, 0, 1));
+    const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
+    const entries = await this.prisma.incomeEntry.findMany({
+      where: {
+        workerId: worker.id,
+        effectiveStatus: "ACTIVE",
+        OR: [
+          { shift: { clockIn: { gte: yearStart, lt: yearEnd } } },
+          { shiftId: null, createdAt: { gte: yearStart, lt: yearEnd } },
+        ],
+      },
+      include: { payout: { select: { asset: true } } },
+    });
+    const byRail: Record<string, number> = {};
+    let unmatchedUsdCents = 0;
+    let devnetTestUsdCents = 0;
+    let withholdingUnknownUsdCents = 0;
+    for (const entry of entries) {
+      const unmatched = Math.max(0, entry.paidUsdCents - entry.payrollReportedUsdCents);
+      if (entry.payout?.asset === "tUSDC") {
+        devnetTestUsdCents += unmatched;
+        continue;
+      }
+      unmatchedUsdCents += unmatched;
+      const rail = entry.payoutRail ?? "UNSPECIFIED";
+      byRail[rail] = (byRail[rail] ?? 0) + unmatched;
+      if (entry.withholdingStatus !== "CONFIRMED") {
+        withholdingUnknownUsdCents += entry.paidUsdCents;
+      }
+    }
+    return {
+      year,
+      unmatchedUsdCents,
+      withholdingUnknownUsdCents,
+      devnetTestUsdCents,
+      byRail,
+      guidance: {
+        tipIncome: "https://www.irs.gov/newsroom/tip-income-is-taxable-and-must-be-reported",
+        withholding: "https://www.irs.gov/individuals/employees/tax-withholding",
+        estimatedTax: "https://www.irs.gov/publications/p505",
+      },
+      disclaimer:
+        "Planning information only; this is not tax advice or a tax liability calculation.",
+    };
+  }
+
   /**
    * Spec §4.4 — wallets are replaceable payout accounts; multiple allowed,
    * exactly one active default.
