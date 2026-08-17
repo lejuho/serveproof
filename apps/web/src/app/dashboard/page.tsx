@@ -45,6 +45,12 @@ interface ImportSummary {
   mappedShifts: number;
   unmappedShifts: number;
   businessDates?: string[];
+  autoCalculations?: {
+    businessDate: string;
+    batchId: string | null;
+    outcome: string;
+    message?: string;
+  }[];
   errors: { line: number; message: string }[];
 }
 interface PendingMapping {
@@ -494,6 +500,15 @@ export default function DashboardPage() {
       // 임포트된 CSV의 최신 영업일을 계산 날짜로 자동 선택
       const latest = result.businessDates?.at(-1);
       if (latest) setBusinessDate(latest);
+      // 서버가 날짜별로 자동 계산까지 끝냈으므로, 가장 최근에 계산된 배치를
+      // 3단계 카드에 바로 로드해 승인만 남긴다
+      const latestCalculated = [...(result.autoCalculations ?? [])]
+        .reverse()
+        .find((calc) => calc.batchId);
+      if (latestCalculated?.batchId) {
+        setBusinessDate(latestCalculated.businessDate);
+        setBatch(await api<Batch>(`/allocation-batches/${latestCalculated.batchId}`));
+      }
       refreshUnmapped();
     });
 
@@ -1132,8 +1147,26 @@ export default function DashboardPage() {
                           {!!importResult.businessDates?.length && (
                             <span className="text-emerald-700">
                               {" "}
-                              . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로
-                              자동 선택했습니다.
+                              . 영업일 {importResult.businessDates.join(", ")}의 배분을 자동
+                              계산했습니다 — 아래에서 검토 후 승인만 하면 됩니다.
+                              {(importResult.autoCalculations?.filter(
+                                (calc) => calc.outcome === "SKIPPED",
+                              ).length ?? 0) > 0 &&
+                                ` (이미 승인된 ${importResult.autoCalculations!.filter((calc) => calc.outcome === "SKIPPED").length}건은 그대로 둠)`}
+                            </span>
+                          )}
+                          {(importResult.autoCalculations?.filter(
+                            (calc) => calc.outcome === "FAILED",
+                          ).length ?? 0) > 0 && (
+                            <span className="text-red-600">
+                              {" "}
+                              · 자동 계산 실패{" "}
+                              {
+                                importResult.autoCalculations!.filter(
+                                  (calc) => calc.outcome === "FAILED",
+                                ).length
+                              }
+                              건
                             </span>
                           )}
                         </>
@@ -1151,8 +1184,26 @@ export default function DashboardPage() {
                           {!!importResult.businessDates?.length && (
                             <span className="text-emerald-700">
                               {" "}
-                              . Detected {importResult.businessDates.join(", ")}; calculation date
-                              was selected automatically.
+                              . Allocations for {importResult.businessDates.join(", ")} were
+                              calculated automatically — review and approve below.
+                              {(importResult.autoCalculations?.filter(
+                                (calc) => calc.outcome === "SKIPPED",
+                              ).length ?? 0) > 0 &&
+                                ` (${importResult.autoCalculations!.filter((calc) => calc.outcome === "SKIPPED").length} already-approved left as is)`}
+                            </span>
+                          )}
+                          {(importResult.autoCalculations?.filter(
+                            (calc) => calc.outcome === "FAILED",
+                          ).length ?? 0) > 0 && (
+                            <span className="text-red-600">
+                              {" "}
+                              · auto-calculation failed for{" "}
+                              {
+                                importResult.autoCalculations!.filter(
+                                  (calc) => calc.outcome === "FAILED",
+                                ).length
+                              }{" "}
+                              date(s)
                             </span>
                           )}
                         </>

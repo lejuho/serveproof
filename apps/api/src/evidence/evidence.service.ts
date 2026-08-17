@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { AllocationsService } from "../allocations/allocations.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { normalizeCsv } from "./csv-normalizer";
 
@@ -8,14 +9,34 @@ export interface CsvImportSummary {
   mappedShifts: number;
   unmappedShifts: number;
   businessDates: string[];
+  /**
+   * Post-import automatic calculation per business date. outcome is the batch
+   * status (CALCULATED / REVIEW_REQUIRED), SKIPPED for already-approved
+   * batches, or FAILED (e.g. no policy) — failures never fail the import.
+   */
+  autoCalculations: {
+    businessDate: string;
+    batchId: string | null;
+    outcome: string;
+    message?: string;
+  }[];
   errors: { line: number; message: string }[];
 }
 
 @Injectable()
 export class EvidenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(EvidenceService.name);
 
-  async importCsv(venueId: string, csvText: string): Promise<CsvImportSummary> {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly allocations: AllocationsService,
+  ) {}
+
+  async importCsv(
+    venueId: string,
+    csvText: string,
+    actorUserId?: string,
+  ): Promise<CsvImportSummary> {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) throw new NotFoundException(`Venue ${venueId} not found`);
 
@@ -120,12 +141,31 @@ export class EvidenceService {
       ]),
     ].sort();
 
+    // 계산은 결정적·멱등이므로 임포트가 곧 계산이다 — 승인만 사람 몫으로 남긴다.
+    const autoCalculations: CsvImportSummary["autoCalculations"] = [];
+    for (const businessDate of businessDates) {
+      try {
+        const batch = await this.allocations.calculate({ venueId, businessDate }, actorUserId);
+        autoCalculations.push({ businessDate, batchId: batch.id, outcome: batch.status });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        autoCalculations.push({
+          businessDate,
+          batchId: null,
+          outcome: error instanceof ConflictException ? "SKIPPED" : "FAILED",
+          message,
+        });
+        this.logger.warn(`auto-calculation for ${venueId} ${businessDate} skipped: ${message}`);
+      }
+    }
+
     return {
       tipsUpserted,
       shiftsUpserted,
       mappedShifts,
       unmappedShifts,
       businessDates,
+      autoCalculations,
       errors: normalized.errors,
     };
   }

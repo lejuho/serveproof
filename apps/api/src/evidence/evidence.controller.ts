@@ -22,7 +22,7 @@ export class EvidenceController {
   async importCsv(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const { venueId, csvText } = parseBody(csvImportSchema, body);
     await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
-    return this.evidence.importCsv(venueId, csvText);
+    return this.evidence.importCsv(venueId, csvText, user.id);
   }
 
   // Spec §22 — GET /venues/:venueId/tip-evidence
