@@ -41,6 +41,8 @@ Staffing currently operates as a closed labor pool limited to workers with confi
 
 The UI separates venue work into `Staffing / Settlement & income` and worker work into `Work / Income & proof`. Venue and account context remain persistent, with explicit handoffs from approved attendance to allocation and the income ledger.
 
+The worker screen initially loads `account, income summary, alerts, and the latest 25 income entries` through one overview API. Tax/proof history loads after the first screen, while venue connections and shifts load only when the `Work` tab opens. The income timeline uses cursor pagination to append 25 older entries at a time.
+
 New income proofs default to `recipient email OTP`. The recipient must pass a five-minute OTP and receives an access session lasting at most 15 minutes. Workers can explicitly opt into an unauthenticated public link. Expired, revoked, or corrected links return report metadata but never the income snapshot. Existing grants remain public-link mode for compatibility.
 
 For detailed requirements and current progress, see the [implementation specification](ServeProof_MVP_Implementation_Spec_v2.md), [implementation plan](IMPLEMENTATION_PLAN.md), and [architecture documentation](ARCHITECTURE.md).
@@ -387,9 +389,18 @@ SQUARE_APP_ID=...
 SQUARE_APP_SECRET=...
 SQUARE_ACCESS_TOKEN=...
 SQUARE_REDIRECT_URI=https://serveproofapi-production.up.railway.app/providers/square/callback
+
+# Optional low-volume performance thresholds (defaults shown)
+PERFORMANCE_LOGGING_ENABLED=true
+API_SLOW_REQUEST_MS=750
+PRISMA_SLOW_QUERY_MS=200
 ```
 
 Railway injects runtime `PORT`, so do not set a fixed `API_PORT` in deployed environments. The API prefers `PORT` and uses `API_PORT=3001` only locally.
+
+Performance logging does not print every request or SQL statement. The API emits one `slow_api_request` line only after the threshold, while Prisma emits `slow_db_query` only for queries at or above 200ms. SQL parameters, email addresses, and tokens are never logged; only the operation and table name are retained. `dbDurationSumMs` is the sum of query durations within a request and can exceed `totalMs` when queries run in parallel. Prisma pool timeouts (`P2024`) are labeled `db_pool_timeout`. Set `PERFORMANCE_LOGGING_ENABLED=false` to disable the instrumentation entirely.
+
+When slow queries recur, manually run [`scripts/pg-stat-statements.sql`](scripts/pg-stat-statements.sql) in the Supabase SQL Editor to inspect statements ranked by cumulative execution time. The application and migrations never run this diagnostic query automatically.
 
 OTP email is sent through the Brevo HTTPS API. Railway blocks outbound SMTP ports 25/465/587 below the Pro plan, so SMTP remains a local/Pro fallback. Responses contain `devCode` only for email domains listed in `OTP_DEVCODE_DOMAINS` and when `APP_ENV=local`, preserving one-click demo/E2E login. All other addresses receive codes only by email.
 

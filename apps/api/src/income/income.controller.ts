@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { AccessService, VENUE_MANAGE_ROLES } from "../auth/access.service";
 import { CurrentUser, type AuthenticatedUser } from "../auth/current-user.decorator";
@@ -12,6 +12,10 @@ const correctionSchema = z.object({
   allocatedUsdCents: z.number().int().nonnegative().optional(),
   paidUsdCents: z.number().int().nonnegative().optional(),
   payrollReportedUsdCents: z.number().int().nonnegative().optional(),
+});
+const timelineQuerySchema = z.object({
+  cursor: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 @Controller()
@@ -31,8 +35,13 @@ export class IncomeController {
 
   // Spec §22 — worker self-service income endpoints
   @Get("workers/me/income-timeline")
-  timeline(@CurrentUser() user: AuthenticatedUser) {
-    return this.income.timelineForUser(user.id);
+  timeline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("cursor") cursor?: string,
+    @Query("limit") rawLimit?: string,
+  ) {
+    const query = parseBody(timelineQuerySchema, { cursor, limit: rawLimit });
+    return this.income.timelineForUser(user.id, query.cursor, query.limit);
   }
 
   @Get("workers/me/income-summary")

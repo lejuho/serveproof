@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as QRCode from "qrcode";
 import {
@@ -61,6 +61,10 @@ interface TimelineEntry {
   isCorrection: boolean;
   correctionReason: string | null;
 }
+interface TimelinePage {
+  items: TimelineEntry[];
+  nextCursor: string | null;
+}
 
 function SourceBadge({
   ingestSource,
@@ -106,6 +110,12 @@ interface Me {
   user: { email: string; displayName: string };
   wallets: { id: string; address: string; isDefault: boolean; status: string }[];
 }
+interface WorkerOverview {
+  me: Me;
+  summary: Summary;
+  alerts: Alert[];
+  timeline: TimelinePage;
+}
 interface TaxReadiness {
   year: number;
   unmatchedUsdCents: number;
@@ -148,6 +158,8 @@ export default function MyIncomePage() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -170,11 +182,17 @@ export default function MyIncomePage() {
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [incomeSecondaryLoading, setIncomeSecondaryLoading] = useState(false);
+  const [incomeSecondaryLoaded, setIncomeSecondaryLoaded] = useState(false);
+  const [workDataLoading, setWorkDataLoading] = useState(false);
+  const [workDataLoaded, setWorkDataLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedAlertId, setCopiedAlertId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   const [workerWorkspace, setWorkerWorkspace] = useState<"work" | "income">("income");
+  const incomeSecondaryRequested = useRef(false);
+  const workDataRequested = useRef(false);
   const purpose = customPurpose ?? t(purposeKey);
 
   const guard = useCallback(
@@ -195,34 +213,70 @@ export default function MyIncomePage() {
     }
     setAvailableModes(getCurrentSession()?.modes ?? []);
     void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
-    Promise.all([
-      api<Me>("/workers/me"),
-      api<TimelineEntry[]>("/workers/me/income-timeline"),
-      api<Summary>("/workers/me/income-summary"),
-      api<Alert[]>("/workers/me/discrepancies"),
-      api<Grant[]>("/disclosures"),
-      api<VenueConnection[]>("/workers/me/venue-connections"),
-      api<TaxReadiness>("/workers/me/tax-readiness"),
-    ])
-      .then(
-        ([meData, timelineData, summaryData, alertData, grantData, connectionData, taxData]) => {
-          setAvailableModes(getCurrentSession()?.modes ?? []);
-          setMe(meData);
-          setTimeline(timelineData);
-          setSummary(summaryData);
-          setAlerts(alertData);
-          setGrants(grantData);
-          setVenueConnections(connectionData);
-          setTaxReadiness(taxData);
-        },
-      )
+    api<WorkerOverview>("/workers/me/overview")
+      .then((overview) => {
+        setAvailableModes(getCurrentSession()?.modes ?? []);
+        setMe(overview.me);
+        setTimeline(overview.timeline.items);
+        setTimelineCursor(overview.timeline.nextCursor);
+        setSummary(overview.summary);
+        setAlerts(overview.alerts);
+      })
       .catch(guard)
       .finally(() => setInitialLoading(false));
   }, [router, guard]);
 
+  useEffect(() => {
+    if (initialLoading || workerWorkspace !== "income" || incomeSecondaryRequested.current) return;
+    incomeSecondaryRequested.current = true;
+    setIncomeSecondaryLoading(true);
+    Promise.all([api<Grant[]>("/disclosures"), api<TaxReadiness>("/workers/me/tax-readiness")])
+      .then(([grantData, taxData]) => {
+        setGrants(grantData);
+        setTaxReadiness(taxData);
+      })
+      .catch(guard)
+      .finally(() => {
+        setIncomeSecondaryLoaded(true);
+        setIncomeSecondaryLoading(false);
+      });
+  }, [guard, initialLoading, workerWorkspace]);
+
+  useEffect(() => {
+    if (initialLoading || workerWorkspace !== "work" || workDataRequested.current) return;
+    workDataRequested.current = true;
+    setWorkDataLoading(true);
+    api<VenueConnection[]>("/workers/me/venue-connections")
+      .then(setVenueConnections)
+      .catch(guard)
+      .finally(() => {
+        setWorkDataLoaded(true);
+        setWorkDataLoading(false);
+      });
+  }, [guard, initialLoading, workerWorkspace]);
+
   const refreshGrants = useCallback(() => {
     api<Grant[]>("/disclosures").then(setGrants).catch(guard);
   }, [guard]);
+
+  async function loadMoreTimeline() {
+    if (!timelineCursor || timelineLoading) return;
+    setTimelineLoading(true);
+    try {
+      const page = await api<TimelinePage>(
+        `/workers/me/income-timeline?limit=25&cursor=${encodeURIComponent(timelineCursor)}`,
+      );
+      setTimeline((current) => [
+        ...current,
+        ...page.items.filter((entry) => !current.some((existing) => existing.id === entry.id)),
+      ]);
+      setTimelineCursor(page.nextCursor);
+    } catch (caught) {
+      guard(caught);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }
 
   /** Spec §26 steps 20–21 — create grant, issue report, render QR. */
   async function createDisclosure() {
@@ -592,7 +646,11 @@ export default function MyIncomePage() {
 
       {workerWorkspace === "work" && (
         <>
-          <VenueConnectionCards connections={venueConnections} locale={locale} />
+          {workDataLoading || !workDataLoaded ? (
+            <LoadingState title={t("loading.connections")} description={t("loading.wait")} />
+          ) : (
+            <VenueConnectionCards connections={venueConnections} locale={locale} />
+          )}
           <WorkerStaffingCard locale={locale} onGoToIncome={() => setWorkerWorkspace("income")} />
         </>
       )}
@@ -613,6 +671,10 @@ export default function MyIncomePage() {
                 hint={locale === "ko" ? "사업장 수 · 근무 건수" : "payer count · shifts"}
               />
             </div>
+          )}
+
+          {(incomeSecondaryLoading || !incomeSecondaryLoaded) && (
+            <LoadingState compact title={t("loading.incomeDetails")} />
           )}
 
           {taxReadiness && (
@@ -826,6 +888,18 @@ export default function MyIncomePage() {
                 </tbody>
               </table>
             </div>
+            {timelineCursor && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="secondary"
+                  onClick={loadMoreTimeline}
+                  loading={timelineLoading}
+                  loadingLabel={t("me.timeline.loadingMore")}
+                >
+                  {t("me.timeline.loadMore")}
+                </Button>
+              </div>
+            )}
           </Card>
 
           <Card title={t("me.share.title")} description={t("me.share.desc")}>

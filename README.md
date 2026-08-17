@@ -41,6 +41,8 @@ Staffing 기능은 현재 연결이 확인된 노동자만 참여하는 폐쇄�
 
 화면은 사업장의 `인력 운영 / 정산·소득`, 노동자의 `근무 / 소득·증명` 작업공간으로 분리됩니다. 선택한 사업장과 계정 맥락은 유지되며, 근무 승인 뒤 배분·소득원장으로 이어지는 이동 버튼을 제공합니다.
 
+노동자 화면의 첫 로드는 `계정·소득 요약·알림·최근 소득 25건`을 overview API로 가져옵니다. 세금·증빙 이력은 첫 화면 뒤에, 사업장 연결과 시프트는 `근무` 탭을 열 때 조회합니다. 소득 타임라인은 커서 페이지네이션으로 이전 25건씩 추가합니다.
+
 소득증명은 새 발급부터 `지정 이메일 OTP`가 기본입니다. 수신자는 5분 유효 OTP를 통과해야 하며 인증 세션은 최대 15분 유지됩니다. 사용자가 명시적으로 선택하면 로그인 없는 공개 링크도 만들 수 있습니다. 만료·철회·정정된 링크는 보고서 메타데이터만 반환하고 소득 snapshot은 반환하지 않습니다. 기존 발급 링크는 호환성을 위해 공개 링크 모드로 유지됩니다.
 
 상세 요구사항과 현재 진행 상태는 [구현 명세](ServeProof_MVP_Implementation_Spec_v2.md), [구현 계획](IMPLEMENTATION_PLAN.md), [아키텍처 문서](ARCHITECTURE.md)를 참고하세요.
@@ -389,9 +391,18 @@ SQUARE_APP_ID=...
 SQUARE_APP_SECRET=...
 SQUARE_ACCESS_TOKEN=...
 SQUARE_REDIRECT_URI=https://serveproofapi-production.up.railway.app/providers/square/callback
+
+# Optional low-volume performance thresholds (defaults shown)
+PERFORMANCE_LOGGING_ENABLED=true
+API_SLOW_REQUEST_MS=750
+PRISMA_SLOW_QUERY_MS=200
 ```
 
 Railway가 런타임 `PORT`를 자동 주입하므로 배포 환경에 `API_PORT`를 별도로 고정하지 않습니다. API는 `PORT`를 우선 사용하고, 로컬에서만 `API_PORT=3001`을 사용합니다.
+
+성능 로그는 모든 요청과 SQL을 출력하지 않습니다. API는 임계값을 넘긴 요청만 `slow_api_request` 한 줄로 기록하고, Prisma는 200ms 이상인 쿼리만 `slow_db_query`로 기록합니다. SQL 파라미터·이메일·토큰은 기록하지 않으며 쿼리는 동작과 테이블 이름만 남깁니다. `dbDurationSumMs`는 한 요청에 포함된 쿼리 시간의 합계라 병렬 쿼리가 있으면 `totalMs`보다 클 수 있습니다. Prisma 연결 풀 타임아웃 `P2024`는 `db_pool_timeout`으로 구분됩니다. 계측 자체를 끄려면 `PERFORMANCE_LOGGING_ENABLED=false`로 설정합니다.
+
+느린 쿼리가 반복될 때만 Supabase SQL Editor에서 [`scripts/pg-stat-statements.sql`](scripts/pg-stat-statements.sql)을 수동 실행해 누적 실행시간 상위 쿼리를 확인합니다. 애플리케이션과 migration은 이 진단 SQL을 자동 실행하지 않습니다.
 
 OTP 이메일은 Brevo HTTPS API로 발송합니다 (Railway는 Pro 플랜 미만에서 아웃바운드 SMTP 25/465/587을 차단하므로 SMTP는 로컬/Pro 전용 폴백입니다). `OTP_DEVCODE_DOMAINS`에 등록된 도메인의 이메일과 `APP_ENV=local` 환경에서만 응답에 `devCode`가 포함되어 데모/E2E 계정은 원클릭 로그인이 유지됩니다. 그 외 주소는 실제 이메일로만 코드를 받습니다.
 

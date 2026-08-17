@@ -1,10 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@serveproof/db";
 import { maskWallet } from "../common/privacy";
+import { IncomeService } from "../income/income.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class WorkersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly income: IncomeService,
+  ) {}
 
   private async getWorkerByUserId(userId: string) {
     const worker = await this.prisma.worker.findUnique({ where: { userId } });
@@ -28,6 +33,29 @@ export class WorkersService {
     return worker;
   }
 
+  /** Initial worker screen payload; secondary tabs load their own data on demand. */
+  async overview(userId: string) {
+    const worker = await this.prisma.worker.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        user: { select: { email: true, displayName: true } },
+        wallets: {
+          select: { id: true, address: true, isDefault: true, status: true },
+          orderBy: { linkedAt: "asc" },
+        },
+      },
+    });
+    if (!worker) throw new NotFoundException("No worker profile for this user");
+
+    const [summary, alerts, timeline] = await Promise.all([
+      this.income.summaryForWorker(worker.id),
+      this.income.discrepanciesForWorker(worker.id),
+      this.income.timelineForWorker(worker.id, undefined, 25),
+    ]);
+    return { me: worker, summary, alerts, timeline };
+  }
+
   /** Worker-facing cards for every venue identity connected to this account. */
   async venueConnections(userId: string) {
     const worker = await this.prisma.worker.findUnique({
@@ -44,20 +72,62 @@ export class WorkersService {
 
     const venueIds = [...new Set(worker.externalAccounts.map((account) => account.venueId))];
     if (venueIds.length === 0) return [];
+    const venueList = Prisma.join(venueIds);
     const [allocations, payouts, incomeEntries] = await Promise.all([
-      this.prisma.workerAllocation.findMany({
-        where: { workerId: worker.id, batch: { venueId: { in: venueIds } } },
-        include: { batch: { select: { venueId: true, businessDate: true } } },
-      }),
-      this.prisma.payout.findMany({
-        where: { workerId: worker.id, venueId: { in: venueIds } },
-        orderBy: { createdAt: "desc" },
-      }),
-      this.prisma.incomeEntry.findMany({
+      this.prisma.$queryRaw<
+        Array<{
+          venueId: string;
+          businessDate: string;
+          amountUsdCents: number;
+          payoutStatus: string;
+          payoutRail: string | null;
+        }>
+      >(Prisma.sql`
+        SELECT DISTINCT ON (b."venueId")
+          b."venueId" AS "venueId",
+          b."businessDate" AS "businessDate",
+          a."netAllocatedUsdCents" AS "amountUsdCents",
+          a."payoutStatus"::text AS "payoutStatus",
+          a."payoutRail"::text AS "payoutRail"
+        FROM "WorkerAllocation" a
+        JOIN "AllocationBatch" b ON b.id = a."batchId"
+        WHERE a."workerId" = ${worker.id}
+          AND b."venueId" IN (${venueList})
+        ORDER BY b."venueId", b."businessDate" DESC, b."createdAt" DESC, a.id DESC
+      `),
+      this.prisma.$queryRaw<
+        Array<{
+          venueId: string;
+          rail: string;
+          status: string;
+          txSignature: string | null;
+          settledAt: Date | null;
+        }>
+      >(Prisma.sql`
+        SELECT DISTINCT ON (p."venueId")
+          p."venueId" AS "venueId",
+          p.rail::text AS rail,
+          p.status::text AS status,
+          p."txSignature" AS "txSignature",
+          p."settledAt" AS "settledAt"
+        FROM "Payout" p
+        WHERE p."workerId" = ${worker.id}
+          AND p."venueId" IN (${venueList})
+        ORDER BY p."venueId", p."createdAt" DESC, p.id DESC
+      `),
+      this.prisma.incomeEntry.groupBy({
+        by: ["venueId"],
         where: { workerId: worker.id, venueId: { in: venueIds }, effectiveStatus: "ACTIVE" },
-        select: { venueId: true, updatedAt: true },
+        _count: { _all: true },
+        _max: { updatedAt: true },
       }),
     ]);
+
+    const allocationByVenue = new Map(
+      allocations.map((allocation) => [allocation.venueId, allocation]),
+    );
+    const payoutByVenue = new Map(payouts.map((payout) => [payout.venueId, payout]));
+    const incomeByVenue = new Map(incomeEntries.map((entry) => [entry.venueId, entry]));
 
     const accountsByVenue = new Map<string, typeof worker.externalAccounts>();
     for (const account of worker.externalAccounts) {
@@ -69,11 +139,9 @@ export class WorkersService {
 
     return [...accountsByVenue.entries()].map(([venueId, accounts]) => {
       const venue = accounts[0]!.venue;
-      const latestAllocation = allocations
-        .filter((allocation) => allocation.batch.venueId === venueId)
-        .sort((a, b) => b.batch.businessDate.localeCompare(a.batch.businessDate))[0];
-      const latestPayout = payouts.find((payout) => payout.venueId === venueId);
-      const venueIncome = incomeEntries.filter((entry) => entry.venueId === venueId);
+      const latestAllocation = allocationByVenue.get(venueId);
+      const latestPayout = payoutByVenue.get(venueId);
+      const venueIncome = incomeByVenue.get(venueId);
       const confirmed = accounts.some((account) => account.mappingStatus === "CONFIRMED");
       const walletReady = worker.defaultWallet?.status === "ACTIVE";
       return {
@@ -92,8 +160,8 @@ export class WorkersService {
         defaultWalletMasked: maskWallet(worker.defaultWallet?.address),
         latestAllocation: latestAllocation
           ? {
-              businessDate: latestAllocation.batch.businessDate,
-              amountUsdCents: latestAllocation.netAllocatedUsdCents,
+              businessDate: latestAllocation.businessDate,
+              amountUsdCents: latestAllocation.amountUsdCents,
               payoutStatus: latestAllocation.payoutStatus,
               payoutRail: latestAllocation.payoutRail,
             }
@@ -107,10 +175,8 @@ export class WorkersService {
             }
           : null,
         incomeEntries: {
-          count: venueIncome.length,
-          lastUpdatedAt:
-            venueIncome.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
-              ?.updatedAt ?? null,
+          count: venueIncome?._count._all ?? 0,
+          lastUpdatedAt: venueIncome?._max.updatedAt ?? null,
         },
       };
     });
@@ -131,7 +197,13 @@ export class WorkersService {
           { shiftId: null, createdAt: { gte: yearStart, lt: yearEnd } },
         ],
       },
-      include: { payout: { select: { asset: true } } },
+      select: {
+        paidUsdCents: true,
+        payrollReportedUsdCents: true,
+        payoutRail: true,
+        withholdingStatus: true,
+        payout: { select: { asset: true } },
+      },
     });
     const byRail: Record<string, number> = {};
     let unmatchedUsdCents = 0;

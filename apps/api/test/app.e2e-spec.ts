@@ -266,6 +266,16 @@ describe("ServeProof API integration", () => {
 
     const workerProfile = await api().get("/workers/me").set(bearer(worker)).expect(200);
     const workerId = workerProfile.body.id as string;
+    await api()
+      .get("/workers/me/overview")
+      .set(bearer(worker))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.me.id).toBe(workerId);
+        expect(body.summary.totals.allocatedUsdCents).toEqual(expect.any(Number));
+        expect(body.timeline).toEqual({ items: expect.any(Array), nextCursor: null });
+        expect(body.alerts).toEqual(expect.any(Array));
+      });
     const csvText = [
       "provider,venue_external_id,worker_external_id,shift_external_id,tip_type,gross_tip,clock_in,clock_out,role,payout_route,payroll_status",
       `csv_test,venue_${runId},worker_${runId},shift_${runId},CARD_TIP,10.00,2026-08-05T17:00:00Z,2026-08-05T18:00:00Z,SERVER,USDC,PENDING`,
@@ -470,10 +480,11 @@ describe("ServeProof API integration", () => {
       .set(bearer(worker))
       .expect(200)
       .expect(({ body }) => {
-        const entry = body.find(
+        const entry = body.items.find(
           (candidate: { businessDate: string }) => candidate.businessDate === "2026-08-05",
         );
         expect(entry).toMatchObject({ paidUsdCents: 1000, payoutRail: "PAYROLL" });
+        expect(body).toHaveProperty("nextCursor");
       });
 
     await api()

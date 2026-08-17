@@ -566,6 +566,7 @@ model Payout {
 
   @@index([venueId, status])
   @@index([workerId])
+  @@index([workerId, venueId, createdAt])
 }
 
 // ── Payroll Observability ───────────────────────────────────────────────────
@@ -651,6 +652,8 @@ model IncomeEntry {
   corrections  IncomeEntry[]  @relation("Correction")
 
   @@index([workerId, createdAt])
+  @@index([workerId, effectiveStatus, createdAt, id])
+  @@index([workerId, venueId, effectiveStatus, updatedAt])
   @@index([venueId])
 }
 
@@ -676,6 +679,7 @@ model DiscrepancyAlert {
   createdAt  DateTime        @default(now())
 
   @@index([workerId])
+  @@index([workerId, resolvedAt, createdAt])
   @@index([venueId, type])
 }
 
@@ -715,6 +719,7 @@ model DisclosureGrant {
   accesses DisclosureAccessLog[]
 
   @@index([workerId])
+  @@index([workerId, createdAt])
 }
 
 model DisclosureAccessLog {

@@ -321,7 +321,7 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   await test.step("23–24. correction flips the report to CORRECTED", async () => {
     const workerBToken = await apiLogin(request, WORKER_B_EMAIL);
     const timeline = await apiGet(request, workerBToken, "/workers/me/income-timeline");
-    const entry = timeline.find(
+    const entry = timeline.items.find(
       (e: { businessDate: string | null }) => e.businessDate === BUSINESS_DATE,
     );
     expect(entry, `Worker B income entry for ${BUSINESS_DATE}`).toBeTruthy();

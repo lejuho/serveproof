@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { rebuildVenueIncome } from "@serveproof/db";
+import { Prisma, rebuildVenueIncome } from "@serveproof/db";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
@@ -37,10 +37,14 @@ export class IncomeService {
   }
 
   /** Spec §22 — GET /workers/me/income-timeline */
-  async timelineForUser(userId: string) {
+  async timelineForUser(userId: string, cursor?: string, limit = 25) {
     const worker = await this.workerOf(userId);
+    return this.timelineForWorker(worker.id, cursor, limit);
+  }
+
+  async timelineForWorker(workerId: string, cursor?: string, limit = 25) {
     const entries = await this.prisma.incomeEntry.findMany({
-      where: { workerId: worker.id, effectiveStatus: "ACTIVE" },
+      where: { workerId, effectiveStatus: "ACTIVE" },
       include: {
         shift: {
           select: {
@@ -55,9 +59,13 @@ export class IncomeService {
         venue: { select: { id: true, name: true } },
         payout: { select: { txSignature: true } },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: limit + 1,
     });
-    return entries.map((e) => ({
+    const hasMore = entries.length > limit;
+    const page = hasMore ? entries.slice(0, limit) : entries;
+    const items = page.map((e) => ({
       id: e.id,
       venue: e.venue,
       businessDate: e.shift?.businessDate ?? null,
@@ -75,52 +83,89 @@ export class IncomeService {
       isCorrection: e.correctionOfId !== null,
       correctionReason: e.correctionReason,
     }));
+    return {
+      items,
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    };
   }
 
   /** Spec §22 — GET /workers/me/income-summary */
   async summaryForUser(userId: string) {
     const worker = await this.workerOf(userId);
-    const entries = await this.prisma.incomeEntry.findMany({
-      where: { workerId: worker.id, effectiveStatus: "ACTIVE" },
-      include: { shift: { select: { businessDate: true, ingestSource: true } } },
-    });
-    const totals = entries.reduce(
-      (acc, e) => ({
-        earnedUsdCents: acc.earnedUsdCents + e.earnedUsdCents,
-        allocatedUsdCents: acc.allocatedUsdCents + e.allocatedUsdCents,
-        paidUsdCents: acc.paidUsdCents + e.paidUsdCents,
-        payrollReportedUsdCents: acc.payrollReportedUsdCents + e.payrollReportedUsdCents,
+    return this.summaryForWorker(worker.id);
+  }
+
+  async summaryForWorker(workerId: string) {
+    const [summaryRows, grades] = await Promise.all([
+      this.prisma.$queryRaw<
+        Array<{
+          earnedUsdCents: bigint;
+          allocatedUsdCents: bigint;
+          paidUsdCents: bigint;
+          payrollReportedUsdCents: bigint;
+          shiftCount: bigint;
+          monthCount: bigint;
+          payerCount: bigint;
+          providerVerifiedShiftCount: bigint;
+        }>
+      >(Prisma.sql`
+        SELECT
+          COALESCE(SUM(i."earnedUsdCents"), 0) AS "earnedUsdCents",
+          COALESCE(SUM(i."allocatedUsdCents"), 0) AS "allocatedUsdCents",
+          COALESCE(SUM(i."paidUsdCents"), 0) AS "paidUsdCents",
+          COALESCE(SUM(i."payrollReportedUsdCents"), 0) AS "payrollReportedUsdCents",
+          COUNT(*) AS "shiftCount",
+          COUNT(DISTINCT LEFT(s."businessDate", 7)) AS "monthCount",
+          COUNT(DISTINCT i."venueId") AS "payerCount",
+          COUNT(*) FILTER (WHERE s."ingestSource" = 'PROVIDER_API') AS "providerVerifiedShiftCount"
+        FROM "IncomeEntry" i
+        LEFT JOIN "ShiftEvidence" s ON s.id = i."shiftId"
+        WHERE i."workerId" = ${workerId}
+          AND i."effectiveStatus" = 'ACTIVE'
+      `),
+      this.prisma.incomeEntry.groupBy({
+        by: ["evidenceGrade"],
+        where: { workerId, effectiveStatus: "ACTIVE" },
+        _count: { _all: true },
       }),
-      { earnedUsdCents: 0, allocatedUsdCents: 0, paidUsdCents: 0, payrollReportedUsdCents: 0 },
+    ]);
+    const row = summaryRows[0]!;
+    const totals = {
+      earnedUsdCents: Number(row.earnedUsdCents),
+      allocatedUsdCents: Number(row.allocatedUsdCents),
+      paidUsdCents: Number(row.paidUsdCents),
+      payrollReportedUsdCents: Number(row.payrollReportedUsdCents),
+    };
+    const monthCount = Number(row.monthCount);
+    const gradeCounts = Object.fromEntries(
+      grades.map((grade) => [grade.evidenceGrade, grade._count._all]),
     );
-    const months = new Set(entries.map((e) => e.shift?.businessDate?.slice(0, 7)).filter(Boolean));
-    const payers = new Set(entries.map((e) => e.venueId));
-    const gradeCounts: Record<string, number> = {};
-    for (const e of entries) gradeCounts[e.evidenceGrade] = (gradeCounts[e.evidenceGrade] ?? 0) + 1;
-    const providerVerifiedShiftCount = entries.filter(
-      (e) => e.shift?.ingestSource === "PROVIDER_API",
-    ).length;
 
     return {
       totals,
-      shiftCount: entries.length,
-      monthCount: months.size,
+      shiftCount: Number(row.shiftCount),
+      monthCount,
       avgMonthlyAllocatedUsdCents:
-        months.size > 0 ? Math.round(totals.allocatedUsdCents / months.size) : 0,
-      payerCount: payers.size,
+        monthCount > 0 ? Math.round(totals.allocatedUsdCents / monthCount) : 0,
+      payerCount: Number(row.payerCount),
       gradeCounts,
       // shifts whose evidence came from a third-party provider API (not self-reported)
-      providerVerifiedShiftCount,
+      providerVerifiedShiftCount: Number(row.providerVerifiedShiftCount),
     };
   }
 
   /** Spec §22 — GET /workers/me/discrepancies */
   async discrepanciesForUser(userId: string) {
     const worker = await this.workerOf(userId);
+    return this.discrepanciesForWorker(worker.id);
+  }
+
+  async discrepanciesForWorker(workerId: string) {
     const alerts = await this.prisma.discrepancyAlert.findMany({
-      where: { workerId: worker.id, resolvedAt: null },
+      where: { workerId, resolvedAt: null },
       orderBy: { createdAt: "desc" },
     });
+    if (alerts.length === 0) return [];
     const [venues, shifts] = await Promise.all([
       this.prisma.venue.findMany({
         where: { id: { in: [...new Set(alerts.map((alert) => alert.venueId))] } },

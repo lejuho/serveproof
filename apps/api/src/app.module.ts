@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { AllocationsModule } from "./allocations/allocations.module";
 import { AuthModule } from "./auth/auth.module";
 import { DisclosureModule } from "./disclosure/disclosure.module";
@@ -15,6 +16,7 @@ import { ProvidersModule } from "./providers/providers.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { WorkersModule } from "./workers/workers.module";
 import { StaffingModule } from "./staffing/staffing.module";
+import { PerformanceInterceptor } from "./common/performance.interceptor";
 
 @Module({
   imports: [
@@ -38,5 +40,6 @@ import { StaffingModule } from "./staffing/staffing.module";
     DisclosureModule,
     StaffingModule,
   ],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: PerformanceInterceptor }],
 })
 export class AppModule {}

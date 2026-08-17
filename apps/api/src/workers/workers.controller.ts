@@ -19,6 +19,11 @@ export class WorkersController {
     return this.workers.getMe(user.id);
   }
 
+  @Get("overview")
+  overview(@CurrentUser() user: AuthenticatedUser) {
+    return this.workers.overview(user.id);
+  }
+
   @Get("venue-connections")
   venueConnections(@CurrentUser() user: AuthenticatedUser) {
     return this.workers.venueConnections(user.id);
