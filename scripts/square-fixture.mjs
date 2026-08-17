@@ -7,7 +7,17 @@
 // Idempotent: team members are matched by reference_id; payments/timecards use
 // fixed idempotency keys, so re-runs do not duplicate.
 //
+// --random: NOT idempotent by design — every run adds a fresh randomized set
+// (3–6 tip payments, randomized shift windows/durations, occasional declared
+// cash tips) for the same 3 stable workers, so ServeProof mappings stay valid
+// across runs. Same-day re-runs may produce overlapping timecards; Square
+// accepts them and ServeProof sums the minutes.
+// --new-worker: additionally creates one brand-new random team member with a
+// shift but no ServeProof mapping — demos held allocations and the
+// connect-a-new-hire invite flow.
+//
 // Usage: node scripts/square-fixture.mjs [businessDate=YYYY-MM-DD (UTC), default: yesterday]
+//                                        [--random] [--new-worker]
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,10 +36,15 @@ const VERSION = "2026-07-15";
 // Payments cannot be backdated (created_at = call time), so tips always land
 // on TODAY's UTC business date. Default the whole fixture to today and place
 // timecards in already-elapsed windows of the same day.
-const dateArg = process.argv[2];
+const args = process.argv.slice(2);
+const RANDOM = args.includes("--random");
+const NEW_WORKER = args.includes("--new-worker");
+const dateArg = args.find((arg) => !arg.startsWith("--"));
 const day = dateArg ? new Date(`${dateArg}T00:00:00Z`) : new Date();
 const ymd = day.toISOString().slice(0, 10);
-const FIXTURE = `serveproof-${ymd}`;
+const NONCE = Date.now().toString(36);
+const FIXTURE = RANDOM ? `serveproof-rnd-${ymd}-${NONCE}` : `serveproof-${ymd}`;
+const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 
 async function sq(path, init) {
   const res = await fetch(`${BASE}${path}`, {
@@ -61,6 +76,23 @@ const WORKERS = [
   { referenceId: "worker_002", givenName: "Bob", familyName: "Server", role: "SERVER" },
   { referenceId: "worker_003", givenName: "Carol", familyName: "Busser", role: "BUSSER" },
 ];
+if (NEW_WORKER) {
+  const NAMES = [
+    ["Dana", "Kim"],
+    ["Evan", "Lee"],
+    ["Fiona", "Park"],
+    ["Gus", "Choi"],
+    ["Hana", "Jung"],
+  ];
+  const [givenName, familyName] = NAMES[randInt(0, NAMES.length - 1)];
+  const ROLES = ["SERVER", "BUSSER", "BARTENDER"];
+  WORKERS.push({
+    referenceId: `worker_rnd_${NONCE}`,
+    givenName,
+    familyName,
+    role: ROLES[randInt(0, ROLES.length - 1)],
+  });
+}
 
 const existing = await sq("/v2/team-members/search", {
   method: "POST",
@@ -97,11 +129,22 @@ for (const worker of WORKERS) {
   teamMembers[worker.referenceId] = member;
 }
 
-// ── 3) card payments with tips (total tips $120.00) ─────────────
-const PAYMENTS = [
-  { key: "p1", amountCents: 50000, tipCents: 8000 },
-  { key: "p2", amountCents: 30000, tipCents: 4000 },
-];
+// ── 3) card payments with tips ──────────────────────────────────
+// Fixed mode totals $120.00; random mode draws 3–6 checks of $80–$400 with a
+// 12–25% tip each.
+const PAYMENTS = RANDOM
+  ? Array.from({ length: randInt(3, 6) }, (_, index) => {
+      const amountCents = randInt(80, 400) * 100;
+      return {
+        key: `p${index + 1}`,
+        amountCents,
+        tipCents: Math.round((amountCents * randInt(12, 25)) / 100),
+      };
+    })
+  : [
+      { key: "p1", amountCents: 50000, tipCents: 8000 },
+      { key: "p2", amountCents: 30000, tipCents: 4000 },
+    ];
 for (const p of PAYMENTS) {
   try {
     const created = await sq("/v2/payments", {
@@ -136,24 +179,56 @@ const clampedStart = (minutes) => {
 };
 const win = (minutes) =>
   isToday ? { start: clampedStart(minutes).toISOString(), end: anchor.toISOString() } : null;
-const TIMECARDS = [
-  {
-    ref: "worker_001",
-    ...(win(100) ?? { start: `${ymd}T17:00:00Z`, end: `${ymd}T22:00:00Z` }),
-    role: "SERVER",
-  },
-  {
-    ref: "worker_002",
-    ...(win(120) ?? { start: `${ymd}T17:00:00Z`, end: `${ymd}T23:00:00Z` }),
-    role: "SERVER",
-  },
-  {
-    ref: "worker_003",
-    ...(win(90) ?? { start: `${ymd}T18:00:00Z`, end: `${ymd}T22:30:00Z` }),
-    role: "BUSSER",
-    cashTipCents: 3550,
-  },
-];
+const randomWindow = (minutes) => {
+  if (isToday) {
+    const end = new Date(Date.now() - randInt(5, 20) * 60 * 1000);
+    const start = new Date(end.getTime() - minutes * 60 * 1000);
+    return {
+      start: (start < startOfDay ? startOfDay : start).toISOString(),
+      end: end.toISOString(),
+    };
+  }
+  const start = new Date(`${ymd}T00:00:00Z`);
+  start.setUTCHours(randInt(16, 19), randInt(0, 59), 0, 0);
+  return {
+    start: start.toISOString(),
+    end: new Date(start.getTime() + minutes * 60 * 1000).toISOString(),
+  };
+};
+const TIMECARDS = RANDOM
+  ? WORKERS.map((worker) => ({
+      ref: worker.referenceId,
+      ...randomWindow(randInt(180, 420)),
+      role: worker.role,
+      // ~30%의 근무는 현금팁 신고를 포함 (CASH_TIP 증빙 경로)
+      ...(Math.random() < 0.3 ? { cashTipCents: randInt(8, 45) * 100 } : {}),
+    }))
+  : [
+      {
+        ref: "worker_001",
+        ...(win(100) ?? { start: `${ymd}T17:00:00Z`, end: `${ymd}T22:00:00Z` }),
+        role: "SERVER",
+      },
+      {
+        ref: "worker_002",
+        ...(win(120) ?? { start: `${ymd}T17:00:00Z`, end: `${ymd}T23:00:00Z` }),
+        role: "SERVER",
+      },
+      {
+        ref: "worker_003",
+        ...(win(90) ?? { start: `${ymd}T18:00:00Z`, end: `${ymd}T22:30:00Z` }),
+        role: "BUSSER",
+        cashTipCents: 3550,
+      },
+    ];
+if (NEW_WORKER && !RANDOM) {
+  const added = WORKERS.find((worker) => worker.referenceId === `worker_rnd_${NONCE}`);
+  TIMECARDS.push({
+    ref: added.referenceId,
+    ...(win(80) ?? { start: `${ymd}T18:30:00Z`, end: `${ymd}T21:30:00Z` }),
+    role: added.role,
+  });
+}
 for (const t of TIMECARDS) {
   try {
     const created = await sq("/v2/labor/timecards", {
