@@ -16,6 +16,7 @@ import {
 import { connectWallet, signTransactionBase64 } from "@/lib/wallet";
 import { useI18n } from "@/lib/i18n";
 import { apiStaleTime, fetchApiQuery, invalidateApiQueries } from "@/lib/query";
+import { solscanTxUrl } from "@/lib/solana";
 import {
   AppShell,
   Badge,
@@ -74,6 +75,12 @@ interface Allocation {
   externalWorkerId: string | null;
   // null → 보류 배분: 아직 계정을 연결하지 않은 외부 직원의 몫
   worker: { defaultWalletId: string | null; user: { displayName: string } } | null;
+  payouts: {
+    rail: string;
+    status: string;
+    txSignature: string | null;
+    externalReference: string | null;
+  }[];
 }
 interface SettlementClose {
   businessDate: string;
@@ -795,7 +802,7 @@ export default function DashboardPage() {
             <button
               onClick={async () => {
                 await logoutSession();
-                router.push("/login?switch=1");
+                router.push("/");
               }}
               className="text-sm font-medium text-zinc-500 hover:text-zinc-700"
             >
@@ -821,7 +828,9 @@ export default function DashboardPage() {
                   className={`${inputClass} mt-1.5`}
                   value={setupOrgName}
                   onChange={(event) => setSetupOrgName(event.target.value)}
-                  placeholder={locale === "ko" ? "예: 한강 다이닝 그룹" : "e.g. Riverside Dining Group"}
+                  placeholder={
+                    locale === "ko" ? "예: 한강 다이닝 그룹" : "e.g. Riverside Dining Group"
+                  }
                 />
               </label>
             )}
@@ -925,7 +934,7 @@ export default function DashboardPage() {
           <button
             onClick={async () => {
               await logoutSession();
-              router.push("/login?switch=1");
+              router.push("/");
             }}
             className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
           >
@@ -1780,6 +1789,24 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className={tableCellClass}>
+                        {a.payoutStatus === "PAID" && a.payouts[0]?.txSignature && (
+                          <a
+                            href={solscanTxUrl(a.payouts[0].txSignature)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-800"
+                          >
+                            Solscan ↗
+                          </a>
+                        )}
+                        {a.payoutStatus === "PAID" &&
+                          !a.payouts[0]?.txSignature &&
+                          a.payouts[0]?.externalReference && (
+                            <span className="text-xs text-zinc-500">
+                              {locale === "ko" ? "참조번호" : "Reference"}:{" "}
+                              {a.payouts[0].externalReference}
+                            </span>
+                          )}
                         {a.payoutStatus !== "PAID" && !a.worker && (
                           <span className="text-xs leading-relaxed text-zinc-500">
                             {locale === "ko"

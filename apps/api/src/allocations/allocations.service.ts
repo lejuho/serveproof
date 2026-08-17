@@ -194,7 +194,20 @@ export class AllocationsService {
       where: { id },
       include: {
         allocations: {
-          include: { worker: { include: { user: { select: { displayName: true } } } } },
+          include: {
+            worker: { include: { user: { select: { displayName: true } } } },
+            payouts: {
+              where: { status: "FINALIZED" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                rail: true,
+                status: true,
+                txSignature: true,
+                externalReference: true,
+              },
+            },
+          },
         },
       },
     });

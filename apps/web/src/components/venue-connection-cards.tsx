@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge, Button, Card } from "@/components/ui";
+import { solscanTxUrl } from "@/lib/solana";
 
 export interface VenueConnection {
   venue: { id: string; name: string };
@@ -193,6 +194,16 @@ export function VenueConnectionCards({
                       {ko ? "소득 내역" : "Income entries"}: {connection.incomeEntries.count}
                       {ko ? "건" : " entries"}
                     </p>
+                    {connection.latestPayout?.txSignature && (
+                      <a
+                        href={solscanTxUrl(connection.latestPayout.txSignature)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block font-medium text-violet-600 underline underline-offset-2 hover:text-violet-800"
+                      >
+                        Solscan ↗
+                      </a>
+                    )}
                   </div>
                 </div>
               </details>
