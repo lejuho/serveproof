@@ -296,8 +296,14 @@ describe("ServeProof API integration", () => {
       .send({ workerId, venueId, provider: "csv_test", externalWorkerId: `worker_${runId}` })
       .expect(201);
     await api()
-      .patch(`/worker-mappings/${mapping.body.id}/verify`)
+      .patch(`/worker-mappings/${mapping.body.id}/respond`)
       .set(bearer(manager))
+      .send({ decision: "ACCEPT" })
+      .expect(403);
+    await api()
+      .patch(`/worker-mappings/${mapping.body.id}/respond`)
+      .set(bearer(worker))
+      .send({ decision: "ACCEPT" })
       .expect(200)
       .expect(({ body }) => {
         expect(body.backfilledShifts).toBe(1);

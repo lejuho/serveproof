@@ -1,9 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { MailService } from "../auth/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class MappingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(MappingsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   /**
    * Spec §22 — GET /venues/:venueId/unmapped-workers
@@ -20,7 +32,13 @@ export class MappingsService {
       where: { venueId, mappingStatus: "PENDING" },
       include: { worker: { include: { user: { select: { displayName: true, email: true } } } } },
     });
-    return { unmappedShiftWorkers: shifts, pendingMappings: pending };
+    const pendingKeys = new Set(pending.map((item) => `${item.provider}:${item.externalWorkerId}`));
+    return {
+      unmappedShiftWorkers: shifts.filter(
+        (item) => !pendingKeys.has(`${item.provider}:${item.externalWorkerId}`),
+      ),
+      pendingMappings: pending,
+    };
   }
 
   /**
@@ -50,7 +68,7 @@ export class MappingsService {
     const worker = await this.prisma.worker.findUnique({ where: { id: workerId } });
     if (!worker) throw new NotFoundException(`Worker ${workerId} not found`);
 
-    return this.prisma.externalWorkerAccount.upsert({
+    const mapping = await this.prisma.externalWorkerAccount.upsert({
       where: {
         venueId_provider_externalWorkerId: {
           venueId: input.venueId,
@@ -58,7 +76,12 @@ export class MappingsService {
           externalWorkerId: input.externalWorkerId,
         },
       },
-      update: { workerId, mappingStatus: "PENDING" },
+      update: {
+        workerId,
+        mappingStatus: "PENDING",
+        verifiedBy: null,
+        verifiedAt: null,
+      },
       create: {
         workerId,
         venueId: input.venueId,
@@ -67,22 +90,47 @@ export class MappingsService {
         mappingStatus: "PENDING",
       },
     });
-  }
 
-  async getMappingVenueId(id: string): Promise<string> {
-    const mapping = await this.prisma.externalWorkerAccount.findUnique({
-      where: { id },
-      select: { venueId: true },
-    });
-    if (!mapping) throw new NotFoundException(`Mapping ${id} not found`);
-    return mapping.venueId;
+    let invitationEmailSent = false;
+    if (input.workerEmail && this.mail.enabled) {
+      const venue = await this.prisma.venue.findUnique({
+        where: { id: input.venueId },
+        select: { name: true },
+      });
+      try {
+        const origin = (process.env.WEB_ORIGIN ?? "https://serveproof-web.vercel.app").replace(
+          /\/$/,
+          "",
+        );
+        await this.mail.send(
+          input.workerEmail,
+          `[ServeProof] ${venue?.name ?? "A venue"} sent an account connection request`,
+          [
+            `${venue?.name ?? "사업장"}에서 ${input.provider} 직원 ID ${input.externalWorkerId}를 이 ServeProof 계정에 연결해 달라고 요청했습니다.`,
+            "본인의 근무 계정이 맞는 경우 ServeProof의 근무 탭에서 수락해 주세요.",
+            "본인이 아니라면 거절하세요. 수락 전에는 근무·소득 기록이 계정에 연결되지 않습니다.",
+            "",
+            `${venue?.name ?? "A venue"} asked to connect ${input.provider} worker ID ${input.externalWorkerId} to this ServeProof account.`,
+            "Accept it from the Work tab only if this is your workplace identity. Otherwise, reject it.",
+            "",
+            `${origin}/me`,
+          ].join("\n"),
+        );
+        invitationEmailSent = true;
+      } catch (error) {
+        this.logger.warn(
+          `mapping invitation email failed for ${mapping.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return { ...mapping, invitationEmailSent };
   }
 
   /**
-   * Spec §22 — PATCH /worker-mappings/:id/verify
-   * Confirms the mapping and backfills mappedWorkerId on existing shift evidence.
+   * Confirms a worker-accepted mapping and backfills existing shift evidence.
    */
-  async verifyMapping(id: string, verifiedBy: string) {
+  private async verifyMapping(id: string, verifiedBy: string) {
     const mapping = await this.prisma.externalWorkerAccount.findUnique({ where: { id } });
     if (!mapping) throw new NotFoundException(`Mapping ${id} not found`);
     if (mapping.mappingStatus === "REJECTED") {
@@ -106,5 +154,34 @@ export class MappingsService {
     ]);
 
     return { mapping: updated, backfilledShifts: backfill.count };
+  }
+
+  /** Worker accepts or rejects a venue-proposed external identity connection. */
+  async respondToMapping(id: string, userId: string, decision: "ACCEPT" | "REJECT") {
+    const mapping = await this.prisma.externalWorkerAccount.findUnique({
+      where: { id },
+      include: { worker: { select: { userId: true } } },
+    });
+    if (!mapping) throw new NotFoundException(`Mapping ${id} not found`);
+    if (mapping.worker.userId !== userId) {
+      throw new ForbiddenException("This connection request belongs to another worker");
+    }
+    if (decision === "REJECT") {
+      if (mapping.mappingStatus === "CONFIRMED") {
+        throw new BadRequestException("A confirmed mapping cannot be rejected");
+      }
+      const rejected = await this.prisma.externalWorkerAccount.update({
+        where: { id },
+        data: { mappingStatus: "REJECTED", verifiedBy: userId, verifiedAt: new Date() },
+      });
+      return { mapping: rejected, backfilledShifts: 0 };
+    }
+    if (mapping.mappingStatus === "REJECTED") {
+      throw new BadRequestException("A rejected mapping requires a new venue request");
+    }
+    if (mapping.mappingStatus === "CONFIRMED") {
+      return { mapping, backfilledShifts: 0 };
+    }
+    return this.verifyMapping(id, userId);
   }
 }

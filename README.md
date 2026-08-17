@@ -451,7 +451,7 @@ curl https://serveproofapi-production.up.railway.app/health
 그다음 다음 순서로 smoke test를 수행합니다.
 
 1. Web에서 demo manager OTP 로그인
-2. CSV import → worker mapping → allocation 계산 → 승인
+2. CSV import → 사업장이 계정 연결 요청 → 노동자가 근무 탭에서 수락 → allocation 계산 → 승인
 3. API에서 Square OAuth 연결 및 provider health 확인
 4. Worker log에서 `provider-sync` 소비 확인
 5. legacy payout 또는 Devnet tUSDC 정산

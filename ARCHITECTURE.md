@@ -141,7 +141,7 @@ src/
 │  └─ evidence.controller.ts # POST /providers/csv/import, GET /venues/:id/tip|shift-evidence
 ├─ providers/              # Square OAuth, health, provider-sync producer
 ├─ mappings/               # GET /venues/:id/unmapped-workers, POST /worker-mappings,
-│                          # PATCH /worker-mappings/:id/verify (기존 시프트 backfill)
+│                          # PATCH /worker-mappings/:id/respond (노동자 수락 시 기존 시프트 backfill)
 ├─ allocations/
 │  ├─ allocations.service.ts # calculate(엔진 호출→CALCULATED|REVIEW_REQUIRED, evidence/allocationHash),
 │  │                         # approve(CALCULATED→PAYABLE, audit log), reject

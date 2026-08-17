@@ -105,7 +105,7 @@ export class OrganizationsService {
 
     const [accounts, unmappedShifts, latestRebuild] = await Promise.all([
       this.prisma.externalWorkerAccount.findMany({
-        where: { venueId },
+        where: { venueId, mappingStatus: { not: "REJECTED" } },
         include: {
           worker: {
             include: {

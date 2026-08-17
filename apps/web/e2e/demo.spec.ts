@@ -116,6 +116,7 @@ async function workerPage(browser: Browser, email: string): Promise<Page> {
 test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   let venueId = "";
   let managerToken = "";
+  let unmappedWorkerToken = "";
   let batchId = "";
   let shareUrl = "";
 
@@ -131,8 +132,8 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
     }
     CSV = buildCsv(BUSINESS_DATE);
 
-    const unmappedToken = await apiLogin(request, UNMAPPED_EMAIL); // creates the worker profile
-    const me = await apiGet(request, unmappedToken, "/workers/me");
+    unmappedWorkerToken = await apiLogin(request, UNMAPPED_EMAIL); // creates the worker profile
+    const me = await apiGet(request, unmappedWorkerToken, "/workers/me");
     await apiPost(request, managerToken, "/worker-mappings", {
       workerId: me.id,
       venueId,
@@ -140,17 +141,17 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
       externalWorkerId: UNMAPPED_EXTERNAL_ID,
     });
 
-    // self-heal: other suites may leave the seeded worker_001..003 mappings
-    // PENDING — confirm them so this run's only unmapped worker is ours
+    // self-heal: the seed intentionally leaves worker_003 pending.
     const unmappedNow = await apiGet(request, managerToken, `/venues/${venueId}/unmapped-workers`);
     for (const pending of unmappedNow.pendingMappings as {
       id: string;
       externalWorkerId: string;
     }[]) {
-      if (/^worker_00[123]$/.test(pending.externalWorkerId)) {
-        await request.patch(`${API}/worker-mappings/${pending.id}/verify`, {
-          headers: { Authorization: `Bearer ${managerToken}` },
-          data: {},
+      if (pending.externalWorkerId === "worker_003") {
+        const workerCToken = await apiLogin(request, "worker.c@demo.serveproof.local");
+        await request.patch(`${API}/worker-mappings/${pending.id}/respond`, {
+          headers: { Authorization: `Bearer ${workerCToken}` },
+          data: { decision: "ACCEPT" },
         });
       }
     }
@@ -165,18 +166,19 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
   });
 
   await test.step("2–4. CSV import: $120 card tip + 4 shifts (1 unmapped)", async () => {
+    await page.getByText("데이터 및 직원 준비", { exact: true }).click();
     await page.locator("textarea").fill(CSV);
     await page.getByRole("button", { name: "Import" }).click();
     await expect(page.getByText(/시프트 4건/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/미매핑 1/)).toBeVisible();
   });
 
-  // the pending-mapping <li> (the review-issue list can mention the same id)
+  // The pending connection row (the review-issue list can mention the same id).
   const mappingItem = (target: Page) =>
     target
       .locator("li")
       .filter({ hasText: UNMAPPED_EXTERNAL_ID })
-      .filter({ has: target.getByRole("button", { name: "매핑 확정" }) });
+      .filter({ hasText: "직원 수락 대기" });
 
   await test.step("5. unmapped worker blocks approval: calculate → REVIEW_REQUIRED", async () => {
     await expect(mappingItem(page)).toBeVisible();
@@ -190,10 +192,16 @@ test("§26 demo scenario, steps 1–24", async ({ page, browser, request }) => {
     await expect(page.getByText(/UNMAPPED_WORKER/)).toBeVisible();
   });
 
-  await test.step("6. manager confirms the mapping in the UI", async () => {
-    const item = mappingItem(page);
-    await item.getByRole("button", { name: "매핑 확정" }).click();
-    await expect(item).toBeHidden({ timeout: 15_000 });
+  await test.step("6. worker accepts the venue connection request", async () => {
+    const worker = await workerPage(browser, UNMAPPED_EMAIL);
+    await worker.getByRole("button", { name: "근무", exact: true }).click();
+    await worker.getByRole("button", { name: "내 근무 계정이 맞습니다" }).click();
+    await expect(worker.getByText(/기존 근무 기록이 이 계정에 연결/)).toBeVisible({
+      timeout: 15_000,
+    });
+    await worker.close();
+    await page.reload();
+    await page.locator('input[type="date"]').fill(BUSINESS_DATE);
   });
 
   await test.step("7–8. recalculate with the active policy → CALCULATED, pool $120", async () => {

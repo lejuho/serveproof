@@ -119,10 +119,10 @@ Phase 6  Deployment & Demo (staging 배포, smoke test, 데모 시나리오)
 
 - [x] Worker 프로필 조회 (`GET /workers/me` — 외부 계정·지갑 포함)
 - [x] WorkerWallet 연결 (`POST /workers/me/wallets`, `PATCH .../default` — 첫 지갑 자동 default, 단일 default 강제 §4.4)
-- [x] ExternalWorkerAccount 매핑 (verify 시 기존 ShiftEvidence backfill 포함):
+- [x] ExternalWorkerAccount 양방향 매핑 (노동자 수락 시 기존 ShiftEvidence backfill 포함):
   - `GET /venues/:venueId/unmapped-workers`
   - `POST /worker-mappings`
-  - `PATCH /worker-mappings/:id/verify`
+  - `PATCH /worker-mappings/:id/respond`
 
 ### 1.5 Evidence Adapter — 공통 인터페이스 + CSV (§7, §8)
 

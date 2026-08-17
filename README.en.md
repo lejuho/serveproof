@@ -217,7 +217,7 @@ When `APP_ENV=local`, the OTP response and login screen expose a development cod
 
 1. Select `Demo Diner` in the dashboard.
 2. Paste the contents of the [demo CSV](fixtures/csv/demo_tips_shifts.csv) into the CSV Import area.
-3. Confirm Worker C's pending mapping.
+3. Have Worker C accept the pending venue connection from the Work tab.
 4. Set the business date to `2026-08-05` and calculate the allocation.
 5. Approve the calculated result.
 6. Record a payroll reference or issue a Devnet tUSDC payment for each allocation.
@@ -449,7 +449,7 @@ curl https://serveproofapi-production.up.railway.app/health
 Then run the smoke test in this order:
 
 1. Sign in to Web as the demo manager through OTP.
-2. CSV import → worker mapping → allocation calculation → approval.
+2. CSV import → venue connection request → worker acceptance → allocation calculation → approval.
 3. Connect Square OAuth through the API and verify provider health.
 4. Confirm `provider-sync` consumption in Worker logs.
 5. Record a legacy payout or settle Devnet tUSDC.

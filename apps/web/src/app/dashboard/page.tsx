@@ -192,6 +192,8 @@ export default function DashboardPage() {
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [venueId, setVenueId] = useState<string>("");
   const [csvText, setCsvText] = useState("");
+  const [mappingEmails, setMappingEmails] = useState<Record<string, string>>({});
+  const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
   const [unmapped, setUnmapped] = useState<UnmappedResponse | null>(null);
   const [businessDate, setBusinessDate] = useState(DEFAULT_BUSINESS_DATE);
@@ -377,9 +379,25 @@ export default function DashboardPage() {
       refreshUnmapped();
     });
 
-  const verifyMapping = (mappingId: string) =>
+  const requestWorkerMapping = (provider: string, externalWorkerId: string) =>
     run(async () => {
-      await api(`/worker-mappings/${mappingId}/verify`, { method: "PATCH", body: {} });
+      const key = `${provider}:${externalWorkerId}`;
+      const workerEmail = mappingEmails[key]?.trim();
+      if (!workerEmail) return;
+      const result = await api<{ invitationEmailSent: boolean }>("/worker-mappings", {
+        method: "POST",
+        body: { venueId, provider, externalWorkerId, workerEmail },
+      });
+      setMappingEmails((current) => ({ ...current, [key]: "" }));
+      setMappingMessage(
+        result.invitationEmailSent
+          ? locale === "ko"
+            ? `${workerEmail}로 연결 요청을 보냈습니다.`
+            : `Connection request sent to ${workerEmail}.`
+          : locale === "ko"
+            ? "연결 요청을 만들었습니다. 직원이 ServeProof 근무 탭에서 수락해야 합니다."
+            : "Connection request created. The worker must accept it from their Work tab.",
+      );
       refreshUnmapped();
     });
 
@@ -788,8 +806,8 @@ export default function DashboardPage() {
                 <span className="mt-0.5 block text-sm text-zinc-500">
                   {actionItems?.unmappedWorkerCount
                     ? locale === "ko"
-                      ? `연결이 필요한 직원 ${actionItems.unmappedWorkerCount}명이 있습니다.`
-                      : `${actionItems.unmappedWorkerCount} workers need mapping.`
+                      ? `계정 연결 작업이 남은 직원 ${actionItems.unmappedWorkerCount}명이 있습니다.`
+                      : `${actionItems.unmappedWorkerCount} workers need account connection.`
                     : locale === "ko"
                       ? "기록 가져오기와 직원 연결은 필요할 때만 펼쳐서 처리합니다."
                       : "Open only when importing records or connecting workers."}
@@ -889,35 +907,106 @@ export default function DashboardPage() {
 
               <div id="card-mapping" className="scroll-mt-6" />
               <Card
-                title={locale === "ko" ? "직원 계정 연결" : "Worker Mapping"}
-                description={t("dash.mapping.desc")}
+                title={locale === "ko" ? "직원 계정 연결 요청" : "Worker account requests"}
+                description={
+                  locale === "ko"
+                    ? "POS의 외부 직원 ID에 ServeProof 이메일 계정을 지정하세요. 직원이 직접 수락해야 연결됩니다."
+                    : "Choose a ServeProof email for each POS worker ID. The worker must accept the request."
+                }
               >
-                {unmapped && unmapped.pendingMappings.length === 0 ? (
-                  <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
+                {mappingMessage && <Callout tone="emerald">{mappingMessage}</Callout>}
+                {unmapped &&
+                unmapped.unmappedShiftWorkers.length === 0 &&
+                unmapped.pendingMappings.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    {locale === "ko"
+                      ? "계정 연결이 필요한 직원이 없습니다."
+                      : "No workers need account connection."}
+                  </p>
                 ) : (
-                  <ul className="flex flex-col gap-2">
-                    {unmapped?.pendingMappings.map((m) => (
-                      <li
-                        key={m.id}
-                        className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
-                      >
-                        <span className="text-[15px]">
-                          <b className="font-mono text-sm">{m.externalWorkerId}</b>
-                          <span className="text-zinc-400"> ({m.provider})</span>
-                          <span className="mx-2 text-zinc-400">→</span>
-                          {m.worker.user.displayName}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="dark"
-                          onClick={() => verifyMapping(m.id)}
-                          disabled={busy}
-                        >
-                          {t("dash.mapping.confirm")}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="space-y-4">
+                    {unmapped && unmapped.unmappedShiftWorkers.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                          {locale === "ko" ? "계정 미매칭" : "Account not matched"}
+                        </p>
+                        <ul className="flex flex-col gap-2">
+                          {unmapped.unmappedShiftWorkers.map((worker) => {
+                            const key = `${worker.provider}:${worker.externalWorkerId}`;
+                            return (
+                              <li
+                                key={key}
+                                className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 md:grid-cols-[1fr_1.4fr_auto] md:items-center"
+                              >
+                                <span>
+                                  <b className="font-mono text-sm">{worker.externalWorkerId}</b>
+                                  <span className="ml-2 text-xs text-zinc-400">
+                                    {worker.provider}
+                                  </span>
+                                </span>
+                                <input
+                                  type="email"
+                                  className={inputClass}
+                                  value={mappingEmails[key] ?? ""}
+                                  onChange={(event) =>
+                                    setMappingEmails((current) => ({
+                                      ...current,
+                                      [key]: event.target.value,
+                                    }))
+                                  }
+                                  placeholder={
+                                    locale === "ko"
+                                      ? "직원의 ServeProof 로그인 이메일"
+                                      : "Worker’s ServeProof login email"
+                                  }
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="dark"
+                                  onClick={() =>
+                                    requestWorkerMapping(worker.provider, worker.externalWorkerId)
+                                  }
+                                  disabled={busy || !mappingEmails[key]?.trim()}
+                                >
+                                  {locale === "ko" ? "연결 요청" : "Send request"}
+                                </Button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <p className="mt-2 text-xs text-zinc-400">
+                          {locale === "ko"
+                            ? "직원은 이 이메일로 ServeProof에 한 번 로그인해 노동자 계정을 만든 상태여야 합니다."
+                            : "The worker must have signed in to ServeProof once with this email."}
+                        </p>
+                      </div>
+                    )}
+                    {unmapped && unmapped.pendingMappings.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                          {locale === "ko" ? "직원 수락 대기" : "Waiting for worker acceptance"}
+                        </p>
+                        <ul className="flex flex-col gap-2">
+                          {unmapped.pendingMappings.map((m) => (
+                            <li
+                              key={m.id}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3"
+                            >
+                              <span className="text-[15px]">
+                                <b className="font-mono text-sm">{m.externalWorkerId}</b>
+                                <span className="text-zinc-400"> ({m.provider})</span>
+                                <span className="mx-2 text-zinc-400">→</span>
+                                {m.worker.user.displayName} · {m.worker.user.email}
+                              </span>
+                              <Badge tone="PENDING">
+                                {locale === "ko" ? "직원 수락 대기" : "Awaiting worker"}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 )}
               </Card>
             </div>

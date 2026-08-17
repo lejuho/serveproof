@@ -16,6 +16,7 @@ const createMappingSchema = z
   .refine((v) => v.workerId || v.workerEmail, {
     message: "workerId or workerEmail is required",
   });
+const respondMappingSchema = z.object({ decision: z.enum(["ACCEPT", "REJECT"]) });
 
 @Controller()
 export class MappingsController {
@@ -37,10 +38,9 @@ export class MappingsController {
     return this.mappings.createMapping(input);
   }
 
-  @Patch("worker-mappings/:id/verify")
-  async verify(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    const venueId = await this.mappings.getMappingVenueId(id);
-    await this.access.assertVenueRole(user.id, venueId, VENUE_MANAGE_ROLES);
-    return this.mappings.verifyMapping(id, user.id);
+  @Patch("worker-mappings/:id/respond")
+  respond(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: unknown) {
+    const { decision } = parseBody(respondMappingSchema, body);
+    return this.mappings.respondToMapping(id, user.id, decision);
   }
 }

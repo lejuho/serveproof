@@ -1241,7 +1241,7 @@ GET  /providers/:provider/health
 ```text
 GET  /venues/:venueId/unmapped-workers
 POST /worker-mappings
-PATCH /worker-mappings/:id/verify
+PATCH /worker-mappings/:id/respond
 ```
 
 ## Evidence

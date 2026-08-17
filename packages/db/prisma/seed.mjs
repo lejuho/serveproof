@@ -96,7 +96,7 @@ async function main() {
       email: "worker.c@demo.serveproof.local",
       name: "Worker C",
       externalWorkerId: "worker_003",
-      mappingStatus: "PENDING", // §26 step 5 — shown as unmapped until the manager confirms
+      mappingStatus: "PENDING", // §26 step 5 — worker accepts the venue connection request
     },
   ];
 

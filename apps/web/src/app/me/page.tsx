@@ -164,6 +164,8 @@ export default function MyIncomePage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [venueConnections, setVenueConnections] = useState<VenueConnection[]>([]);
+  const [respondingMappingId, setRespondingMappingId] = useState<string | null>(null);
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [taxReadiness, setTaxReadiness] = useState<TaxReadiness | null>(null);
   const [reserveRate, setReserveRate] = useState("20");
   const [level, setLevel] = useState("LEVEL_2");
@@ -258,6 +260,32 @@ export default function MyIncomePage() {
   const refreshGrants = useCallback(() => {
     api<Grant[]>("/disclosures").then(setGrants).catch(guard);
   }, [guard]);
+
+  const respondToMapping = async (mappingId: string, decision: "ACCEPT" | "REJECT") => {
+    setRespondingMappingId(mappingId);
+    setConnectionMessage(null);
+    setError(null);
+    try {
+      await api(`/worker-mappings/${mappingId}/respond`, {
+        method: "PATCH",
+        body: { decision },
+      });
+      setVenueConnections(await api<VenueConnection[]>("/workers/me/venue-connections"));
+      setConnectionMessage(
+        decision === "ACCEPT"
+          ? locale === "ko"
+            ? "사업장 계정 연결을 수락했습니다. 기존 근무 기록이 이 계정에 연결되었습니다."
+            : "Connection accepted. Existing work records are now linked to this account."
+          : locale === "ko"
+            ? "사업장 계정 연결 요청을 거절했습니다."
+            : "Connection request rejected.",
+      );
+    } catch (caught) {
+      guard(caught);
+    } finally {
+      setRespondingMappingId(null);
+    }
+  };
 
   async function loadMoreTimeline() {
     if (!timelineCursor || timelineLoading) return;
@@ -646,10 +674,16 @@ export default function MyIncomePage() {
 
       {workerWorkspace === "work" && (
         <>
+          {connectionMessage && <Callout tone="emerald">{connectionMessage}</Callout>}
           {workDataLoading || !workDataLoaded ? (
             <LoadingState title={t("loading.connections")} description={t("loading.wait")} />
           ) : (
-            <VenueConnectionCards connections={venueConnections} locale={locale} />
+            <VenueConnectionCards
+              connections={venueConnections}
+              locale={locale}
+              respondingId={respondingMappingId}
+              onRespond={respondToMapping}
+            />
           )}
           <WorkerStaffingCard locale={locale} onGoToIncome={() => setWorkerWorkspace("income")} />
         </>

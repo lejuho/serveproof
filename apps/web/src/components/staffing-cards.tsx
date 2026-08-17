@@ -35,6 +35,127 @@ const localInput = (date: Date) => {
   const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return shifted.toISOString().slice(0, 16);
 };
+const twoDigits = (value: number) => String(value).padStart(2, "0");
+
+function LocalDateTimeField({
+  label,
+  value,
+  locale,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  locale: "ko" | "en";
+  onChange: (value: string) => void;
+}) {
+  const [datePart = "", timePart = ""] = value.split("T");
+  const [yearValue, monthValue, dayValue] = datePart.split("-").map(Number);
+  const [hourValue, minuteValue] = timePart.split(":").map(Number);
+  const now = new Date();
+  const validPart = (part: number | undefined, fallback: number) =>
+    typeof part === "number" && Number.isFinite(part) ? part : fallback;
+  const year = validPart(yearValue, now.getFullYear());
+  const month = validPart(monthValue, now.getMonth() + 1);
+  const day = validPart(dayValue, now.getDate());
+  const hour = validPart(hourValue, 0);
+  const minute = validPart(minuteValue, 0);
+  const years = Array.from(
+    new Set([year, ...Array.from({ length: 5 }, (_, index) => now.getFullYear() - 1 + index)]),
+  ).sort((a, b) => a - b);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const minutes = Array.from(
+    new Set([minute, ...Array.from({ length: 12 }, (_, i) => i * 5)]),
+  ).sort((a, b) => a - b);
+
+  const update = (
+    next: Partial<{ year: number; month: number; day: number; hour: number; minute: number }>,
+  ) => {
+    const nextYear = next.year ?? year;
+    const nextMonth = next.month ?? month;
+    const maxDay = new Date(nextYear, nextMonth, 0).getDate();
+    const nextDay = Math.min(next.day ?? day, maxDay);
+    onChange(
+      `${nextYear}-${twoDigits(nextMonth)}-${twoDigits(nextDay)}T${twoDigits(next.hour ?? hour)}:${twoDigits(next.minute ?? minute)}`,
+    );
+  };
+
+  const selectClass = `${inputClass} min-w-0 px-2.5 py-2.5 text-sm tabular-nums`;
+  return (
+    <fieldset className="min-w-0 md:col-span-4">
+      <legend className="text-xs font-medium text-zinc-600">{label}</legend>
+      <div className="mt-1 grid grid-cols-3 gap-1.5 rounded-xl border border-zinc-200 bg-white p-2 sm:grid-cols-[1.35fr_1fr_1fr_1fr_1fr]">
+        <select
+          aria-label={locale === "ko" ? `${label} 연도` : `${label} year`}
+          className={selectClass}
+          value={year}
+          onChange={(event) => update({ year: Number(event.target.value) })}
+        >
+          {years.map((item) => (
+            <option key={item} value={item}>
+              {item}
+              {locale === "ko" ? "년" : ""}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={locale === "ko" ? `${label} 월` : `${label} month`}
+          className={selectClass}
+          value={month}
+          onChange={(event) => update({ month: Number(event.target.value) })}
+        >
+          {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => (
+            <option key={item} value={item}>
+              {twoDigits(item)}
+              {locale === "ko" ? "월" : ""}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={locale === "ko" ? `${label} 일` : `${label} day`}
+          className={selectClass}
+          value={Math.min(day, daysInMonth)}
+          onChange={(event) => update({ day: Number(event.target.value) })}
+        >
+          {Array.from({ length: daysInMonth }, (_, index) => index + 1).map((item) => (
+            <option key={item} value={item}>
+              {twoDigits(item)}
+              {locale === "ko" ? "일" : ""}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={locale === "ko" ? `${label} 시` : `${label} hour`}
+          className={selectClass}
+          value={hour}
+          onChange={(event) => update({ hour: Number(event.target.value) })}
+        >
+          {Array.from({ length: 24 }, (_, item) => item).map((item) => (
+            <option key={item} value={item}>
+              {twoDigits(item)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={locale === "ko" ? `${label} 분` : `${label} minute`}
+          className={selectClass}
+          value={minute}
+          onChange={(event) => update({ minute: Number(event.target.value) })}
+        >
+          {minutes.map((item) => (
+            <option key={item} value={item}>
+              {twoDigits(item)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-400">
+        {locale === "ko"
+          ? "연 · 월 · 일 · 시 · 분 (24시간제)"
+          : "Year · month · day · hour · minute (24-hour)"}
+      </p>
+    </fieldset>
+  );
+}
 const statusTone = (status: string) =>
   ["OPEN", "ACCEPTED", "APPROVED", "COMPLETED"].includes(status)
     ? "CONFIRMED"
@@ -208,26 +329,18 @@ export function VenueStaffingCard({
               placeholder={ko ? "복장, 담당 구역, 필요한 경험" : "Attire, station, or experience"}
             />
           </label>
-          <label className="text-xs font-medium text-zinc-600">
-            {ko ? "시작" : "Starts"}
-            <input
-              type="datetime-local"
-              lang={locale}
-              className={`${inputClass} mt-1`}
-              value={startsAt}
-              onChange={(event) => setStartsAt(event.target.value)}
-            />
-          </label>
-          <label className="text-xs font-medium text-zinc-600">
-            {ko ? "종료" : "Ends"}
-            <input
-              type="datetime-local"
-              lang={locale}
-              className={`${inputClass} mt-1`}
-              value={endsAt}
-              onChange={(event) => setEndsAt(event.target.value)}
-            />
-          </label>
+          <LocalDateTimeField
+            label={ko ? "시작" : "Starts"}
+            value={startsAt}
+            locale={locale}
+            onChange={setStartsAt}
+          />
+          <LocalDateTimeField
+            label={ko ? "종료" : "Ends"}
+            value={endsAt}
+            locale={locale}
+            onChange={setEndsAt}
+          />
           <label className="text-xs font-medium text-zinc-600">
             {ko ? "시급 USD" : "Hourly USD"}
             <input

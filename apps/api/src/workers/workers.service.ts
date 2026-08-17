@@ -63,6 +63,7 @@ export class WorkersService {
       include: {
         defaultWallet: { select: { address: true, status: true } },
         externalAccounts: {
+          where: { mappingStatus: { not: "REJECTED" } },
           include: { venue: { select: { id: true, name: true } } },
           orderBy: { createdAt: "asc" },
         },
@@ -152,6 +153,7 @@ export class WorkersService {
             : "CONNECTED"
           : "MAPPING_PENDING",
         externalAccounts: accounts.map((account) => ({
+          id: account.id,
           provider: account.provider,
           externalWorkerId: account.externalWorkerId,
           mappingStatus: account.mappingStatus,

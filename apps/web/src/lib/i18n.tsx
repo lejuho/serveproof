@@ -592,7 +592,7 @@ const dict: Record<string, { ko: string; en: string }> = {
     ko: "사업장 관리자가 확인하거나 처리해야 하는 항목입니다.",
     en: "Items in this venue that still need a manager.",
   },
-  "dash.todo.unmapped": { ko: "연결되지 않은 직원", en: "Unmapped workers" },
+  "dash.todo.unmapped": { ko: "계정 연결 필요", en: "Account connection needed" },
   "dash.todo.uncalculated": { ko: "배분 계산 전 영업일", en: "Uncalculated dates" },
   "dash.todo.approval": { ko: "승인 대기 중인 배분", en: "Batches awaiting approval" },
   "dash.todo.unpaid": { ko: "지급 전 배분", en: "Unpaid allocations" },
@@ -652,8 +652,12 @@ const Ctx = createContext<I18nContext>({
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("ko");
+  const [localeReady, setLocaleReady] = useState(false);
   useEffect(() => {
-    if (localStorage.getItem("sp_locale") === "en") setLocaleState("en");
+    const savedLocale = localStorage.getItem("sp_locale") === "en" ? "en" : "ko";
+    setLocaleState(savedLocale);
+    document.documentElement.lang = savedLocale;
+    setLocaleReady(true);
   }, []);
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -663,6 +667,16 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     setLocaleState(next);
   };
   const t = (key: string) => dict[key]?.[locale] ?? key;
+  if (!localeReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-50" aria-busy="true">
+        <span
+          aria-label="Loading"
+          className="h-7 w-7 animate-spin rounded-full border-2 border-zinc-200 border-t-emerald-600"
+        />
+      </main>
+    );
+  }
   return <Ctx.Provider value={{ locale, setLocale, t }}>{children}</Ctx.Provider>;
 }
 

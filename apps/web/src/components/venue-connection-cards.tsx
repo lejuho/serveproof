@@ -1,11 +1,12 @@
 "use client";
 
-import { Badge, Card } from "@/components/ui";
+import { Badge, Button, Card } from "@/components/ui";
 
 export interface VenueConnection {
   venue: { id: string; name: string };
   connectionStage: "MAPPING_PENDING" | "CONNECTED" | "PAYOUT_READY";
   externalAccounts: {
+    id: string;
     provider: string;
     externalWorkerId: string;
     mappingStatus: string;
@@ -32,9 +33,13 @@ const usd = (cents: number) => "$" + (cents / 100).toFixed(2);
 export function VenueConnectionCards({
   connections,
   locale,
+  respondingId,
+  onRespond,
 }: {
   connections: VenueConnection[];
   locale: "ko" | "en";
+  respondingId?: string | null;
+  onRespond?: (mappingId: string, decision: "ACCEPT" | "REJECT") => void;
 }) {
   const ko = locale === "ko";
   const empty = ko ? "없음" : "Not available";
@@ -82,6 +87,7 @@ export function VenueConnectionCards({
             return (
               <details
                 key={connection.venue.id}
+                open={connection.connectionStage === "MAPPING_PENDING"}
                 className="rounded-xl border border-zinc-200 bg-white open:border-emerald-200 open:bg-emerald-50/20"
               >
                 <summary className="cursor-pointer list-none p-4 [&::-webkit-details-marker]:hidden">
@@ -128,13 +134,36 @@ export function VenueConnectionCards({
                       {ko ? "사업장 계정 연결" : "Venue identity"}
                     </p>
                     {connection.externalAccounts.map((account) => (
-                      <p
+                      <div
                         key={account.provider + ":" + account.externalWorkerId}
-                        className="mt-1 text-zinc-700"
+                        className="mt-2 rounded-lg border border-zinc-200 bg-white p-3 text-zinc-700"
                       >
-                        {account.provider} · {account.externalWorkerId} ·{" "}
-                        {mappingStatus(account.mappingStatus)}
-                      </p>
+                        <p>
+                          {account.provider} · {account.externalWorkerId} ·{" "}
+                          {mappingStatus(account.mappingStatus)}
+                        </p>
+                        {account.mappingStatus === "PENDING" && onRespond && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => onRespond(account.id, "ACCEPT")}
+                              disabled={Boolean(respondingId)}
+                              loading={respondingId === account.id}
+                              loadingLabel={ko ? "처리 중…" : "Saving…"}
+                            >
+                              {ko ? "내 근무 계정이 맞습니다" : "Accept connection"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => onRespond(account.id, "REJECT")}
+                              disabled={Boolean(respondingId)}
+                            >
+                              {ko ? "내 계정이 아닙니다" : "Reject"}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     ))}
                     <p className="mt-1 text-zinc-700">
                       {ko ? "수취 지갑" : "Recipient wallet"}:{" "}
