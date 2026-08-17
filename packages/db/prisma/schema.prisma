@@ -109,6 +109,7 @@ model Venue {
   payrollRecords      PayrollRecord[]
   incomeEntries       IncomeEntry[]
   providerConnections ProviderConnection[]
+  openShifts          OpenShift[]
 
   @@index([organizationId])
 }
@@ -179,6 +180,7 @@ model Worker {
   incomeEntries    IncomeEntry[]
   disclosureGrants DisclosureGrant[]
   reports          VerificationReport[]
+  shiftAssignments ShiftAssignment[]
 }
 
 enum MappingStatus {
@@ -260,6 +262,7 @@ enum RefundStatus {
 enum EvidenceIngestSource {
   CSV_UPLOAD
   PROVIDER_API
+  PLATFORM_ATTESTED
 }
 
 model TipEvidence {
@@ -314,12 +317,84 @@ model ShiftEvidence {
   sourcePayrollStatus String?
   observedAt          DateTime             @default(now())
 
-  venue         Venue         @relation(fields: [venueId], references: [id])
-  incomeEntries IncomeEntry[]
+  venue              Venue            @relation(fields: [venueId], references: [id])
+  incomeEntries      IncomeEntry[]
+  staffingAssignment ShiftAssignment?
 
   @@unique([venueId, provider, externalShiftId])
   @@index([venueId, businessDate])
   @@index([mappedWorkerId])
+}
+
+// ── Closed-network staffing ────────────────────────────────────────────────
+
+enum OpenShiftStatus {
+  DRAFT
+  OPEN
+  FILLED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ShiftAssignmentStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  CLOCKED_IN
+  CLOCKED_OUT
+  APPROVED
+  NO_SHOW
+}
+
+model OpenShift {
+  id                  String          @id @default(uuid())
+  venueId             String
+  role                String
+  description         String?
+  startsAt            DateTime
+  endsAt              DateTime
+  hourlyRateUsdCents  Int
+  expectedTipUsdCents Int             @default(0)
+  headcount           Int             @default(1)
+  status              OpenShiftStatus @default(DRAFT)
+  createdByUserId     String
+  publishedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  venue       Venue             @relation(fields: [venueId], references: [id])
+  assignments ShiftAssignment[]
+
+  @@index([venueId, startsAt])
+  @@index([venueId, status])
+}
+
+model ShiftAssignment {
+  id                 String                @id @default(uuid())
+  openShiftId        String
+  workerId           String
+  status             ShiftAssignmentStatus @default(INVITED)
+  invitedByUserId    String?
+  respondedAt        DateTime?
+  checkInAt          DateTime?
+  checkOutAt         DateTime?
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  shiftEvidenceId    String?               @unique
+  cancellationReason String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  openShift     OpenShift      @relation(fields: [openShiftId], references: [id])
+  worker        Worker         @relation(fields: [workerId], references: [id])
+  shiftEvidence ShiftEvidence? @relation(fields: [shiftEvidenceId], references: [id])
+
+  @@unique([openShiftId, workerId])
+  @@index([workerId, status])
+  @@index([openShiftId, status])
 }
 
 // ── Allocation ──────────────────────────────────────────────────────────────

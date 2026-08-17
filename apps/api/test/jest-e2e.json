@@ -4,6 +4,9 @@
   "testEnvironment": "node",
   "testMatch": ["<rootDir>/test/**/*.e2e-spec.ts"],
   "setupFiles": ["<rootDir>/test/setup-env.ts"],
+  "moduleNameMapper": {
+    "^uuid$": "<rootDir>/test/uuid-mock.ts"
+  },
   "transform": {
     "^.+\\.ts$": [
       "ts-jest",

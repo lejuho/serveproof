@@ -23,6 +23,8 @@ The next sequence is **staging seed → Worker operations check → deployment s
 - Worker and venue-management views under one account, with per-tab view modes and switching among multiple saved accounts
 - Organization- and venue-level OWNER/MANAGER/PAYROLL_ADMIN/VIEWER RBAC with tenant isolation
 - Payment, Order, Timecard, and cash-tip ingestion from CSV and Square Sandbox
+- Open-shift creation, invitations, acceptance, clock-in/out, and work approval inside the connected venue-worker network
+- Approved staffing attendance converted into `ShiftEvidence` for the existing allocation, payout, and income-ledger workflows
 - External worker ID mapping and source-hash-based idempotent evidence storage
 - Time- and role-weighted tip allocation, policy versioning, review, and approval state machine
 - Payroll/legacy payment evidence and Solana Devnet tUSDC settlement
@@ -32,6 +34,10 @@ The next sequence is **staging seed → Worker operations check → deployment s
 - Conservative tax-readiness notice for amounts not yet matched to payroll/withholding records, excluding Devnet test assets
 - Selective-disclosure PDF and QR reports with expiration, revocation, and correction-aware public verification
 - BullMQ jobs for provider sync, Solana confirmation/reconciliation, and report expiration
+
+Staffing currently operates as a closed labor pool limited to workers with confirmed venue connections. It does not provide a public job marketplace, automated worker classification, background checks, insurance, or employer-of-record services. Displayed hourly rates and expected tips are offer terms; approved attendance and settlement evidence determine recorded income.
+
+The UI separates venue work into `Staffing / Settlement & income` and worker work into `Work / Income & proof`. Venue and account context remain persistent, with explicit handoffs from approved attendance to allocation and the income ledger.
 
 For detailed requirements and current progress, see the [implementation specification](ServeProof_MVP_Implementation_Spec_v2.md), [implementation plan](IMPLEMENTATION_PLAN.md), and [architecture documentation](ARCHITECTURE.md).
 

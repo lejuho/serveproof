@@ -14,6 +14,7 @@ import { PoliciesModule } from "./policies/policies.module";
 import { ProvidersModule } from "./providers/providers.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { WorkersModule } from "./workers/workers.module";
+import { StaffingModule } from "./staffing/staffing.module";
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { WorkersModule } from "./workers/workers.module";
     IncomeModule,
     PayrollModule,
     DisclosureModule,
+    StaffingModule,
   ],
 })
 export class AppModule {}

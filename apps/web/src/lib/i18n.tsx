@@ -173,6 +173,7 @@ const dict: Record<string, { ko: string; en: string }> = {
   "me.col.rail": { ko: "지급 방법", en: "Payment method" },
   "me.col.source": { ko: "출처", en: "Source" },
   "me.source.pos": { ko: "POS 연동", en: "POS-verified" },
+  "me.source.staffing": { ko: "사업장 승인 근무", en: "Venue-approved shift" },
   "me.source.self": { ko: "직접 등록", en: "Self-reported" },
   "me.col.grade": { ko: "확인 등급", en: "Verification grade" },
   "me.corrected": { ko: "정정", en: "Corrected" },
@@ -182,7 +183,10 @@ const dict: Record<string, { ko: string; en: string }> = {
     en: "Choose only the information needed and how long to share it.",
   },
   optional: { ko: "(선택)", en: "(optional)" },
-  "me.share.private": { ko: "언제든 공유를 철회할 수 있습니다", en: "You can revoke access anytime" },
+  "me.share.private": {
+    ko: "언제든 공유를 철회할 수 있습니다",
+    en: "You can revoke access anytime",
+  },
   "me.share.forWhat": { ko: "어디에 제출하나요?", en: "What is this for?" },
   "me.share.forWhatHint": {
     ko: "제출 목적을 선택하면 권장 기간과 공개 범위가 함께 설정됩니다.",

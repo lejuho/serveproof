@@ -23,6 +23,8 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 - 한 계정에서 노동자 화면과 사업장 관리 화면을 함께 사용하며, 탭별 화면 모드와 저장된 복수 계정 전환 지원
 - 조직·사업장 단위 OWNER/MANAGER/PAYROLL_ADMIN/VIEWER RBAC와 tenant isolation
 - CSV 및 Square Sandbox의 Payment, Order, Timecard, 현금 팁 수집
+- 연결된 사업장·노동자 네트워크에서 오픈 시프트 등록, 초대·수락, 출퇴근, 근무 승인
+- 승인된 staffing 근무를 `ShiftEvidence`로 전환해 기존 팁 배분·지급·소득원장 흐름과 연결
 - 외부 직원 ID 매핑, source hash 기반 멱등 evidence 저장
 - 시간·역할 가중 팁 배분, 정책 버전 관리, 검토 및 승인 상태 머신
 - Payroll/legacy 지급 증빙과 Solana Devnet tUSDC 정산
@@ -32,6 +34,10 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 - 급여/원천징수 기록과 아직 연결되지 않은 금액을 보여주는 보수적인 세금 준비 알림(Devnet 자산 제외)
 - 선택 공개 PDF·QR, 만료·철회·정정 상태가 반영되는 공개 검증 페이지
 - BullMQ 기반 provider sync, Solana confirmation/reconciliation, report expiry 작업
+
+Staffing 기능은 현재 연결이 확인된 노동자만 참여하는 폐쇄형 인력 풀입니다. 공개 구인 마켓플레이스, 자동 근로자 분류, background check, 보험 및 고용대행 기능은 포함하지 않습니다. 화면에 표시되는 시급과 예상 팁은 모집 조건이며, 실제 소득은 승인된 근무 및 정산 자료를 통해 확정됩니다.
+
+화면은 사업장의 `인력 운영 / 정산·소득`, 노동자의 `근무 / 소득·증명` 작업공간으로 분리됩니다. 선택한 사업장과 계정 맥락은 유지되며, 근무 승인 뒤 배분·소득원장으로 이어지는 이동 버튼을 제공합니다.
 
 상세 요구사항과 현재 진행 상태는 [구현 명세](ServeProof_MVP_Implementation_Spec_v2.md), [구현 계획](IMPLEMENTATION_PLAN.md), [아키텍처 문서](ARCHITECTURE.md)를 참고하세요.
 

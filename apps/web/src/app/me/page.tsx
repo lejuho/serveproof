@@ -27,6 +27,7 @@ import {
   tableHeadClass,
 } from "@/components/ui";
 import { VenueConnectionCards, type VenueConnection } from "@/components/venue-connection-cards";
+import { WorkerStaffingCard } from "@/components/staffing-cards";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -52,7 +53,7 @@ interface TimelineEntry {
   payoutRail: string | null;
   payoutTxSignature: string | null;
   evidenceGrade: string;
-  ingestSource: "CSV_UPLOAD" | "PROVIDER_API" | null;
+  ingestSource: "CSV_UPLOAD" | "PROVIDER_API" | "PLATFORM_ATTESTED" | null;
   isCorrection: boolean;
   correctionReason: string | null;
 }
@@ -65,13 +66,14 @@ function SourceBadge({
   t: (k: string) => string;
 }) {
   const pos = ingestSource === "PROVIDER_API";
+  const staffing = ingestSource === "PLATFORM_ATTESTED";
   return (
     <span
       className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
-        pos ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
+        pos || staffing ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
       }`}
     >
-      {pos ? t("me.source.pos") : t("me.source.self")}
+      {pos ? t("me.source.pos") : staffing ? t("me.source.staffing") : t("me.source.self")}
     </span>
   );
 }
@@ -162,6 +164,7 @@ export default function MyIncomePage() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
+  const [workerWorkspace, setWorkerWorkspace] = useState<"work" | "income">("income");
   const purpose = customPurpose ?? t(purposeKey);
 
   const guard = useCallback(
@@ -478,11 +481,16 @@ export default function MyIncomePage() {
             {t("me.banner.noWallet")}{" "}
             <button
               type="button"
-              onClick={() =>
-                document
-                  .getElementById("card-wallet")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
+              onClick={() => (
+                setWorkerWorkspace("income"),
+                window.setTimeout(
+                  () =>
+                    document
+                      .getElementById("card-wallet")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                  0,
+                )
+              )}
               className="font-semibold underline underline-offset-2 hover:opacity-80"
             >
               {t("me.banner.goConnect")} →
@@ -490,633 +498,701 @@ export default function MyIncomePage() {
           </Callout>
         )}
 
-      {summary && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard label={t("me.stat.allocated")} value={usd(summary.totals.allocatedUsdCents)} />
-          <StatCard label={t("me.stat.paid")} value={usd(summary.totals.paidUsdCents)} />
-          <StatCard label={t("me.stat.avg")} value={usd(summary.avgMonthlyAllocatedUsdCents)} />
-          <StatCard
-            label={t("me.stat.payers")}
-            value={`${summary.payerCount} · ${summary.shiftCount}`}
-            hint={locale === "ko" ? "사업장 수 · 근무 건수" : "payer count · shifts"}
-          />
-        </div>
-      )}
-
-      <VenueConnectionCards connections={venueConnections} locale={locale} />
-
-      {taxReadiness && (
-        <Card
-          title={
-            locale === "ko"
-              ? `${taxReadiness.year} 세금 준비`
-              : `${taxReadiness.year} tax readiness`
-          }
-          description={
-            locale === "ko"
-              ? "급여 신고 또는 원천징수 기록과 아직 연결되지 않은 지급액을 미리 확인합니다."
-              : "Review paid income not yet matched to payroll or withholding records."
-          }
+      <div
+        role="tablist"
+        aria-label={locale === "ko" ? "노동자 작업공간" : "Worker workspace"}
+        className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-200 bg-zinc-100 p-1.5"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workerWorkspace === "work"}
+          onClick={() => setWorkerWorkspace("work")}
+          className={`rounded-xl px-4 py-3 text-left transition ${
+            workerWorkspace === "work"
+              ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200"
+              : "text-zinc-500 hover:bg-white/60"
+          }`}
         >
-          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-            <div>
-              <p className="text-3xl font-bold tracking-tight tabular-nums">
-                {usd(taxReadiness.unmatchedUsdCents)}
-              </p>
-              <p className="mt-1 text-sm text-zinc-500">
-                {locale === "ko"
-                  ? "세금 신고 또는 예상 납부 준비가 필요할 수 있는 금액"
-                  : "Amount that may require filing or estimated-payment planning"}
-              </p>
-            </div>
-            <label className="text-sm text-zinc-600">
-              {locale === "ko" ? "개인 준비율" : "Personal reserve rate"}
-              <select
-                className={`${inputClass} mt-1`}
-                value={reserveRate}
-                onChange={(e) => setReserveRate(e.target.value)}
-              >
-                {[10, 15, 20, 25, 30].map((rate) => (
-                  <option key={rate} value={rate}>
-                    {rate}%
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm">
-            {locale === "ko" ? "준비용 적립 예시" : "Planning reserve example"}:{" "}
-            <b>{usd(Math.round((taxReadiness.unmatchedUsdCents * Number(reserveRate)) / 100))}</b>
-          </div>
-          {taxReadiness.devnetTestUsdCents > 0 && (
-            <Callout tone="amber">
-              {locale === "ko"
-                ? `Devnet tUSDC ${usd(taxReadiness.devnetTestUsdCents)}는 금전 가치가 없는 테스트 자산이므로 위 계산에서 제외했습니다.`
-                : `${usd(taxReadiness.devnetTestUsdCents)} of Devnet tUSDC is excluded because it has no monetary value.`}
-            </Callout>
-          )}
-          <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+          <span className="block text-sm font-semibold">{locale === "ko" ? "근무" : "Work"}</span>
+          <span className="mt-0.5 block text-xs">
             {locale === "ko"
-              ? "세무 자문이나 실제 세액 계산이 아닙니다. 개인 상황은 세무 전문가에게 확인하세요."
-              : taxReadiness.disclaimer}{" "}
-            <a
-              className="font-medium text-emerald-700 underline"
-              href={taxReadiness.guidance.tipIncome}
-              target="_blank"
-              rel="noreferrer"
-            >
-              IRS tip guidance
-            </a>
-            {" · "}
-            <a
-              className="font-medium text-emerald-700 underline"
-              href={taxReadiness.guidance.estimatedTax}
-              target="_blank"
-              rel="noreferrer"
-            >
-              IRS Publication 505
-            </a>
-          </p>
-        </Card>
+              ? "사업장 연결 · 모집 시프트 · 출퇴근"
+              : "Connections · shifts · attendance"}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workerWorkspace === "income"}
+          onClick={() => setWorkerWorkspace("income")}
+          className={`rounded-xl px-4 py-3 text-left transition ${
+            workerWorkspace === "income"
+              ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200"
+              : "text-zinc-500 hover:bg-white/60"
+          }`}
+        >
+          <span className="block text-sm font-semibold">
+            {locale === "ko" ? "소득 · 증명" : "Income & proof"}
+          </span>
+          <span className="mt-0.5 block text-xs">
+            {locale === "ko"
+              ? "소득원장 · 세금 준비 · 증빙 공유"
+              : "Ledger · tax readiness · sharing"}
+          </span>
+        </button>
+      </div>
+
+      {workerWorkspace === "work" && (
+        <>
+          <VenueConnectionCards connections={venueConnections} locale={locale} />
+          <WorkerStaffingCard locale={locale} onGoToIncome={() => setWorkerWorkspace("income")} />
+        </>
       )}
 
-      <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
-        {alerts.length === 0 ? (
-          <p className="text-sm text-zinc-400">{t("me.alerts.empty")}</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {alerts.map((alert) => (
-              <li
-                key={alert.id}
-                className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
-              >
-                <Badge tone="REVIEW_REQUIRED">{t(`alert.label.${alert.type}`)}</Badge>
-                <span className="text-sm text-amber-800">{t(`alert.${alert.type}`)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {workerWorkspace === "income" && (
+        <>
+          {summary && (
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatCard
+                label={t("me.stat.allocated")}
+                value={usd(summary.totals.allocatedUsdCents)}
+              />
+              <StatCard label={t("me.stat.paid")} value={usd(summary.totals.paidUsdCents)} />
+              <StatCard label={t("me.stat.avg")} value={usd(summary.avgMonthlyAllocatedUsdCents)} />
+              <StatCard
+                label={t("me.stat.payers")}
+                value={`${summary.payerCount} · ${summary.shiftCount}`}
+                hint={locale === "ko" ? "사업장 수 · 근무 건수" : "payer count · shifts"}
+              />
+            </div>
+          )}
 
-      <Card title={t("me.timeline.title")} description={t("me.timeline.desc")}>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className={tableHeadClass}>{t("me.col.date")}</th>
-                <th className={tableHeadClass}>{t("me.col.venue")}</th>
-                <th className={`${tableHeadClass} text-right`}>{t("me.col.allocated")}</th>
-                <th className={`${tableHeadClass} text-right`}>{t("me.col.paid")}</th>
-                <th className={`${tableHeadClass} text-right`}>{t("me.col.payroll")}</th>
-                <th className={tableHeadClass}>{t("me.col.withholding")}</th>
-                <th className={tableHeadClass}>{t("me.col.rail")}</th>
-                <th className={tableHeadClass}>{t("me.col.source")}</th>
-                <th className={tableHeadClass}>{t("me.col.grade")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {timeline.map((entry) => (
-                <tr key={entry.id}>
-                  <td className={`${tableCellClass} whitespace-nowrap font-medium text-zinc-900`}>
-                    {entry.businessDate}
-                    {entry.isCorrection && (
-                      <span
-                        title={entry.correctionReason ?? ""}
-                        className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700"
-                      >
-                        {t("me.corrected")}
-                      </span>
-                    )}
-                  </td>
-                  <td className={tableCellClass}>{entry.venue.name}</td>
-                  <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
-                    {usd(entry.allocatedUsdCents)}
-                  </td>
-                  <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
-                    {usd(entry.paidUsdCents)}
-                  </td>
-                  <td className={`${tableCellClass} text-right tabular-nums`}>
-                    {usd(entry.payrollReportedUsdCents)}
-                  </td>
-                  <td className={tableCellClass}>
-                    <Badge tone={entry.withholdingStatus}>
-                      {statusLabel(entry.withholdingStatus)}
-                    </Badge>
-                  </td>
-                  <td className={`${tableCellClass} text-sm text-zinc-500`}>
-                    {entry.payoutRail === "USDC" && entry.payoutTxSignature ? (
-                      <a
-                        href={`https://explorer.solana.com/tx/${entry.payoutTxSignature}?cluster=devnet`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-800"
-                        title={t("me.explorer.title")}
-                      >
-                        USDC ↗
-                      </a>
-                    ) : (
-                      (entry.payoutRail ?? (locale === "ko" ? "없음" : "Not available"))
-                    )}
-                  </td>
-                  <td className={tableCellClass}>
-                    <SourceBadge ingestSource={entry.ingestSource} t={t} />
-                  </td>
-                  <td className={tableCellClass}>
-                    <Badge tone={entry.evidenceGrade}>{entry.evidenceGrade}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <Card title={t("me.share.title")} description={t("me.share.desc")}>
-        <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-zinc-100 pb-5 text-xs font-medium text-zinc-500">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {t("me.share.private")}
-          </span>
-          <span>·</span>
-          <span>{t(`me.share.range.${rangeMonths}`)}</span>
-          <span>·</span>
-          <span>{t("me.share.expiresIn").replace("{days}", expiresInDays)}</span>
-        </div>
-
-        <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
-          <span className="font-semibold">{t("me.share.supplement.title")}</span>{" "}
-          {t("me.share.supplement.detail")}
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-8">
-            <fieldset>
-              <legend className="text-sm font-semibold text-zinc-900">
-                <span className="mr-2 text-emerald-600">1</span>
-                {t("me.share.forWhat")}
-              </legend>
-              <p className="mt-1 text-sm text-zinc-500">{t("me.share.forWhatHint")}</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                {presetOptions
-                  .filter((preset) => preset.primary)
-                  .map((preset, index) => (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      aria-pressed={selectedPreset === preset.value}
-                      onClick={() => selectPreset(preset)}
-                      className={`rounded-xl border p-3.5 text-left transition ${
-                        selectedPreset === preset.value
-                          ? "border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500"
-                          : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
-                      }`}
-                    >
-                      <span className="mb-2 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-500">
-                        {index + 1} · {t("me.share.priority")}
-                      </span>
-                      <span className="block text-sm font-semibold text-zinc-900">
-                        {preset.label}
-                      </span>
-                      <span className="mt-1 block text-xs leading-relaxed text-zinc-500">
-                        {preset.description}
-                      </span>
-                    </button>
-                  ))}
+          {taxReadiness && (
+            <Card
+              title={
+                locale === "ko"
+                  ? `${taxReadiness.year} 세금 준비`
+                  : `${taxReadiness.year} tax readiness`
+              }
+              description={
+                locale === "ko"
+                  ? "급여 신고 또는 원천징수 기록과 아직 연결되지 않은 지급액을 미리 확인합니다."
+                  : "Review paid income not yet matched to payroll or withholding records."
+              }
+            >
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <div>
+                  <p className="text-3xl font-bold tracking-tight tabular-nums">
+                    {usd(taxReadiness.unmatchedUsdCents)}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {locale === "ko"
+                      ? "세금 신고 또는 예상 납부 준비가 필요할 수 있는 금액"
+                      : "Amount that may require filing or estimated-payment planning"}
+                  </p>
+                </div>
+                <label className="text-sm text-zinc-600">
+                  {locale === "ko" ? "개인 준비율" : "Personal reserve rate"}
+                  <select
+                    className={`${inputClass} mt-1`}
+                    value={reserveRate}
+                    onChange={(e) => setReserveRate(e.target.value)}
+                  >
+                    {[10, 15, 20, 25, 30].map((rate) => (
+                      <option key={rate} value={rate}>
+                        {rate}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <details className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/70 open:bg-white">
-                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-700 marker:hidden">
-                  <span className="flex items-center justify-between">
-                    {t("me.share.moreUses")}
-                    <span aria-hidden className="text-zinc-400">
-                      ＋
-                    </span>
-                  </span>
-                </summary>
-                <div className="grid gap-2 border-t border-zinc-200 p-3 sm:grid-cols-2">
-                  {presetOptions
-                    .filter((preset) => !preset.primary)
-                    .map((preset) => (
+              <div className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm">
+                {locale === "ko" ? "준비용 적립 예시" : "Planning reserve example"}:{" "}
+                <b>
+                  {usd(Math.round((taxReadiness.unmatchedUsdCents * Number(reserveRate)) / 100))}
+                </b>
+              </div>
+              {taxReadiness.devnetTestUsdCents > 0 && (
+                <Callout tone="amber">
+                  {locale === "ko"
+                    ? `Devnet tUSDC ${usd(taxReadiness.devnetTestUsdCents)}는 금전 가치가 없는 테스트 자산이므로 위 계산에서 제외했습니다.`
+                    : `${usd(taxReadiness.devnetTestUsdCents)} of Devnet tUSDC is excluded because it has no monetary value.`}
+                </Callout>
+              )}
+              <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+                {locale === "ko"
+                  ? "세무 자문이나 실제 세액 계산이 아닙니다. 개인 상황은 세무 전문가에게 확인하세요."
+                  : taxReadiness.disclaimer}{" "}
+                <a
+                  className="font-medium text-emerald-700 underline"
+                  href={taxReadiness.guidance.tipIncome}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  IRS tip guidance
+                </a>
+                {" · "}
+                <a
+                  className="font-medium text-emerald-700 underline"
+                  href={taxReadiness.guidance.estimatedTax}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  IRS Publication 505
+                </a>
+              </p>
+            </Card>
+          )}
+
+          <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
+            {alerts.length === 0 ? (
+              <p className="text-sm text-zinc-400">{t("me.alerts.empty")}</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {alerts.map((alert) => (
+                  <li
+                    key={alert.id}
+                    className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
+                  >
+                    <Badge tone="REVIEW_REQUIRED">{t(`alert.label.${alert.type}`)}</Badge>
+                    <span className="text-sm text-amber-800">{t(`alert.${alert.type}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title={t("me.timeline.title")} description={t("me.timeline.desc")}>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={tableHeadClass}>{t("me.col.date")}</th>
+                    <th className={tableHeadClass}>{t("me.col.venue")}</th>
+                    <th className={`${tableHeadClass} text-right`}>{t("me.col.allocated")}</th>
+                    <th className={`${tableHeadClass} text-right`}>{t("me.col.paid")}</th>
+                    <th className={`${tableHeadClass} text-right`}>{t("me.col.payroll")}</th>
+                    <th className={tableHeadClass}>{t("me.col.withholding")}</th>
+                    <th className={tableHeadClass}>{t("me.col.rail")}</th>
+                    <th className={tableHeadClass}>{t("me.col.source")}</th>
+                    <th className={tableHeadClass}>{t("me.col.grade")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.map((entry) => (
+                    <tr key={entry.id}>
+                      <td
+                        className={`${tableCellClass} whitespace-nowrap font-medium text-zinc-900`}
+                      >
+                        {entry.businessDate}
+                        {entry.isCorrection && (
+                          <span
+                            title={entry.correctionReason ?? ""}
+                            className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700"
+                          >
+                            {t("me.corrected")}
+                          </span>
+                        )}
+                      </td>
+                      <td className={tableCellClass}>{entry.venue.name}</td>
+                      <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                        {usd(entry.allocatedUsdCents)}
+                      </td>
+                      <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
+                        {usd(entry.paidUsdCents)}
+                      </td>
+                      <td className={`${tableCellClass} text-right tabular-nums`}>
+                        {usd(entry.payrollReportedUsdCents)}
+                      </td>
+                      <td className={tableCellClass}>
+                        <Badge tone={entry.withholdingStatus}>
+                          {statusLabel(entry.withholdingStatus)}
+                        </Badge>
+                      </td>
+                      <td className={`${tableCellClass} text-sm text-zinc-500`}>
+                        {entry.payoutRail === "USDC" && entry.payoutTxSignature ? (
+                          <a
+                            href={`https://explorer.solana.com/tx/${entry.payoutTxSignature}?cluster=devnet`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-violet-600 underline underline-offset-2 hover:text-violet-800"
+                            title={t("me.explorer.title")}
+                          >
+                            USDC ↗
+                          </a>
+                        ) : (
+                          (entry.payoutRail ?? (locale === "ko" ? "없음" : "Not available"))
+                        )}
+                      </td>
+                      <td className={tableCellClass}>
+                        <SourceBadge ingestSource={entry.ingestSource} t={t} />
+                      </td>
+                      <td className={tableCellClass}>
+                        <Badge tone={entry.evidenceGrade}>{entry.evidenceGrade}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card title={t("me.share.title")} description={t("me.share.desc")}>
+            <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-zinc-100 pb-5 text-xs font-medium text-zinc-500">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                {t("me.share.private")}
+              </span>
+              <span>·</span>
+              <span>{t(`me.share.range.${rangeMonths}`)}</span>
+              <span>·</span>
+              <span>{t("me.share.expiresIn").replace("{days}", expiresInDays)}</span>
+            </div>
+
+            <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-900">
+              <span className="font-semibold">{t("me.share.supplement.title")}</span>{" "}
+              {t("me.share.supplement.detail")}
+            </div>
+
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-w-0 space-y-8">
+                <fieldset>
+                  <legend className="text-sm font-semibold text-zinc-900">
+                    <span className="mr-2 text-emerald-600">1</span>
+                    {t("me.share.forWhat")}
+                  </legend>
+                  <p className="mt-1 text-sm text-zinc-500">{t("me.share.forWhatHint")}</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {presetOptions
+                      .filter((preset) => preset.primary)
+                      .map((preset, index) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          aria-pressed={selectedPreset === preset.value}
+                          onClick={() => selectPreset(preset)}
+                          className={`rounded-xl border p-3.5 text-left transition ${
+                            selectedPreset === preset.value
+                              ? "border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500"
+                              : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+                          }`}
+                        >
+                          <span className="mb-2 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-bold text-zinc-500">
+                            {index + 1} · {t("me.share.priority")}
+                          </span>
+                          <span className="block text-sm font-semibold text-zinc-900">
+                            {preset.label}
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-zinc-500">
+                            {preset.description}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                  <details className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/70 open:bg-white">
+                    <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-700 marker:hidden">
+                      <span className="flex items-center justify-between">
+                        {t("me.share.moreUses")}
+                        <span aria-hidden className="text-zinc-400">
+                          ＋
+                        </span>
+                      </span>
+                    </summary>
+                    <div className="grid gap-2 border-t border-zinc-200 p-3 sm:grid-cols-2">
+                      {presetOptions
+                        .filter((preset) => !preset.primary)
+                        .map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            aria-pressed={selectedPreset === preset.value}
+                            onClick={() => selectPreset(preset)}
+                            className={`rounded-lg border p-3 text-left transition ${
+                              selectedPreset === preset.value
+                                ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500"
+                                : "border-zinc-200 bg-white hover:border-zinc-300"
+                            }`}
+                          >
+                            <span className="block text-sm font-semibold text-zinc-900">
+                              {preset.label}
+                            </span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
+                              {preset.description}
+                            </span>
+                          </button>
+                        ))}
                       <button
-                        key={preset.value}
                         type="button"
-                        aria-pressed={selectedPreset === preset.value}
-                        onClick={() => selectPreset(preset)}
+                        aria-pressed={selectedPreset === "custom"}
+                        onClick={() => {
+                          setSelectedPreset("custom");
+                          setCustomPurpose("");
+                        }}
                         className={`rounded-lg border p-3 text-left transition ${
-                          selectedPreset === preset.value
+                          selectedPreset === "custom"
                             ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500"
                             : "border-zinc-200 bg-white hover:border-zinc-300"
                         }`}
                       >
                         <span className="block text-sm font-semibold text-zinc-900">
-                          {preset.label}
+                          {t("me.share.preset.other")}
                         </span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
-                          {preset.description}
+                        <span className="mt-0.5 block text-xs text-zinc-500">
+                          {t("me.share.preset.other.hint")}
                         </span>
                       </button>
-                    ))}
-                  <button
-                    type="button"
-                    aria-pressed={selectedPreset === "custom"}
-                    onClick={() => {
+                    </div>
+                  </details>
+                  {chosenPreset && (
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
+                      <span>
+                        <strong>{t("me.share.typicalRecipient")}</strong> {chosenPreset.audience}
+                      </span>
+                      <span>
+                        <strong>{t("me.share.recommendedSettings")}</strong>{" "}
+                        {t(`me.share.range.${chosenPreset.range}`)} · {chosenLevel.title}
+                      </span>
+                    </div>
+                  )}
+                  <label
+                    className="mt-4 block text-sm font-medium text-zinc-700"
+                    htmlFor="share-purpose"
+                  >
+                    {t("me.share.purpose")}
+                  </label>
+                  <input
+                    id="share-purpose"
+                    className={`${inputClass} mt-1.5`}
+                    value={purpose}
+                    onChange={(e) => {
+                      setCustomPurpose(e.target.value);
                       setSelectedPreset("custom");
-                      setCustomPurpose("");
                     }}
-                    className={`rounded-lg border p-3 text-left transition ${
-                      selectedPreset === "custom"
-                        ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500"
-                        : "border-zinc-200 bg-white hover:border-zinc-300"
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold text-zinc-900">
-                      {t("me.share.preset.other")}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-zinc-500">
-                      {t("me.share.preset.other.hint")}
-                    </span>
-                  </button>
-                </div>
-              </details>
-              {chosenPreset && (
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
-                  <span>
-                    <strong>{t("me.share.typicalRecipient")}</strong> {chosenPreset.audience}
-                  </span>
-                  <span>
-                    <strong>{t("me.share.recommendedSettings")}</strong>{" "}
-                    {t(`me.share.range.${chosenPreset.range}`)} · {chosenLevel.title}
-                  </span>
-                </div>
-              )}
-              <label
-                className="mt-4 block text-sm font-medium text-zinc-700"
-                htmlFor="share-purpose"
-              >
-                {t("me.share.purpose")}
-              </label>
-              <input
-                id="share-purpose"
-                className={`${inputClass} mt-1.5`}
-                value={purpose}
-                onChange={(e) => {
-                  setCustomPurpose(e.target.value);
-                  setSelectedPreset("custom");
-                }}
-                placeholder={t("me.share.purposePlaceholder")}
-              />
-            </fieldset>
+                    placeholder={t("me.share.purposePlaceholder")}
+                  />
+                </fieldset>
 
-            <fieldset>
-              <legend className="text-sm font-semibold text-zinc-900">
-                <span className="mr-2 text-emerald-600">2</span>
-                {t("me.share.chooseScope")}
-              </legend>
-              <p className="mt-1 text-sm text-zinc-500">{t("me.share.chooseScopeHint")}</p>
-              <div className="mt-3 space-y-2">
-                {levelOptions.map((option) => (
-                  <label
-                    key={option.value}
-                    className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition ${
-                      level === option.value
-                        ? "border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-500"
-                        : "border-zinc-200 hover:border-zinc-300"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="disclosure-level"
-                      value={option.value}
-                      checked={level === option.value}
-                      onChange={() => {
-                        setLevel(option.value);
-                        setSelectedPreset("custom");
-                      }}
-                      className="mt-1 h-4 w-4 accent-emerald-600"
-                    />
-                    <span>
-                      <span className="block text-sm font-semibold text-zinc-900">
-                        {option.title}
-                      </span>
-                      <span className="mt-0.5 block text-sm leading-relaxed text-zinc-500">
-                        {option.detail}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              {level === "LEVEL_1" && (
-                <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                  <label
-                    className="block text-sm font-medium text-zinc-700"
-                    htmlFor="income-threshold"
-                  >
-                    {t("me.share.threshold")}
-                  </label>
-                  <div className="relative mt-1.5">
-                    <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-500">
-                      $
-                    </span>
-                    <input
-                      id="income-threshold"
-                      className={`${inputClass} pl-8 ${invalidThreshold ? "border-red-400" : ""}`}
-                      type="number"
-                      min="1"
-                      step="100"
-                      inputMode="decimal"
-                      value={thresholdUsd}
-                      onChange={(e) => setThresholdUsd(e.target.value)}
-                    />
+                <fieldset>
+                  <legend className="text-sm font-semibold text-zinc-900">
+                    <span className="mr-2 text-emerald-600">2</span>
+                    {t("me.share.chooseScope")}
+                  </legend>
+                  <p className="mt-1 text-sm text-zinc-500">{t("me.share.chooseScopeHint")}</p>
+                  <div className="mt-3 space-y-2">
+                    {levelOptions.map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition ${
+                          level === option.value
+                            ? "border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-500"
+                            : "border-zinc-200 hover:border-zinc-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="disclosure-level"
+                          value={option.value}
+                          checked={level === option.value}
+                          onChange={() => {
+                            setLevel(option.value);
+                            setSelectedPreset("custom");
+                          }}
+                          className="mt-1 h-4 w-4 accent-emerald-600"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-zinc-900">
+                            {option.title}
+                          </span>
+                          <span className="mt-0.5 block text-sm leading-relaxed text-zinc-500">
+                            {option.detail}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
-                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
-                    {t("me.share.thresholdHint")}
+                  {level === "LEVEL_1" && (
+                    <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <label
+                        className="block text-sm font-medium text-zinc-700"
+                        htmlFor="income-threshold"
+                      >
+                        {t("me.share.threshold")}
+                      </label>
+                      <div className="relative mt-1.5">
+                        <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-500">
+                          $
+                        </span>
+                        <input
+                          id="income-threshold"
+                          className={`${inputClass} pl-8 ${invalidThreshold ? "border-red-400" : ""}`}
+                          type="number"
+                          min="1"
+                          step="100"
+                          inputMode="decimal"
+                          value={thresholdUsd}
+                          onChange={(e) => setThresholdUsd(e.target.value)}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
+                        {t("me.share.thresholdHint")}
+                      </p>
+                    </div>
+                  )}
+                </fieldset>
+
+                <fieldset>
+                  <legend className="text-sm font-semibold text-zinc-900">
+                    <span className="mr-2 text-emerald-600">3</span>
+                    {t("me.share.accessSettings")}
+                  </legend>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-zinc-700">
+                      {t("me.share.period")}
+                      <select
+                        className={`${inputClass} mt-1.5`}
+                        value={rangeMonths}
+                        onChange={(e) => setRangeMonths(e.target.value)}
+                      >
+                        {["1", "3", "6", "12", "24", "ytd", "lastYear"].map((months) => (
+                          <option key={months} value={months}>
+                            {t(`me.share.range.${months}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-sm font-medium text-zinc-700">
+                      {t("me.share.expiration")}
+                      <select
+                        className={`${inputClass} mt-1.5`}
+                        value={expiresInDays}
+                        onChange={(e) => setExpiresInDays(e.target.value)}
+                      >
+                        {["1", "7", "30"].map((days) => (
+                          <option key={days} value={days}>
+                            {t("me.share.expiresIn").replace("{days}", days)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label
+                    className="mt-4 block text-sm font-medium text-zinc-700"
+                    htmlFor="recipient-email"
+                  >
+                    {t("me.share.recipientLabel")}
+                    <span className="ml-1 font-normal text-zinc-400">{t("optional")}</span>
+                  </label>
+                  <input
+                    id="recipient-email"
+                    className={`${inputClass} mt-1.5 ${invalidEmail ? "border-red-400 focus:border-red-500 focus:ring-red-500/20" : ""}`}
+                    type="email"
+                    autoComplete="email"
+                    value={recipientEmail}
+                    onChange={(e) => setRecipientEmail(e.target.value.trim())}
+                    placeholder="name@company.com"
+                    aria-describedby="recipient-help"
+                    aria-invalid={invalidEmail}
+                  />
+                  <p
+                    id="recipient-help"
+                    className={`mt-1.5 text-xs ${invalidEmail ? "text-red-600" : "text-zinc-500"}`}
+                  >
+                    {invalidEmail ? t("me.share.emailInvalid") : t("me.share.recipientHint")}
                   </p>
-                </div>
-              )}
-            </fieldset>
+                </fieldset>
+              </div>
 
-            <fieldset>
-              <legend className="text-sm font-semibold text-zinc-900">
-                <span className="mr-2 text-emerald-600">3</span>
-                {t("me.share.accessSettings")}
-              </legend>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-zinc-700">
-                  {t("me.share.period")}
-                  <select
-                    className={`${inputClass} mt-1.5`}
-                    value={rangeMonths}
-                    onChange={(e) => setRangeMonths(e.target.value)}
-                  >
-                    {["1", "3", "6", "12", "24", "ytd", "lastYear"].map((months) => (
-                      <option key={months} value={months}>
-                        {t(`me.share.range.${months}`)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-medium text-zinc-700">
-                  {t("me.share.expiration")}
-                  <select
-                    className={`${inputClass} mt-1.5`}
-                    value={expiresInDays}
-                    onChange={(e) => setExpiresInDays(e.target.value)}
-                  >
-                    {["1", "7", "30"].map((days) => (
-                      <option key={days} value={days}>
-                        {t("me.share.expiresIn").replace("{days}", days)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label
-                className="mt-4 block text-sm font-medium text-zinc-700"
-                htmlFor="recipient-email"
-              >
-                {t("me.share.recipientLabel")}
-                <span className="ml-1 font-normal text-zinc-400">{t("optional")}</span>
-              </label>
-              <input
-                id="recipient-email"
-                className={`${inputClass} mt-1.5 ${invalidEmail ? "border-red-400 focus:border-red-500 focus:ring-red-500/20" : ""}`}
-                type="email"
-                autoComplete="email"
-                value={recipientEmail}
-                onChange={(e) => setRecipientEmail(e.target.value.trim())}
-                placeholder="name@company.com"
-                aria-describedby="recipient-help"
-                aria-invalid={invalidEmail}
-              />
-              <p
-                id="recipient-help"
-                className={`mt-1.5 text-xs ${invalidEmail ? "text-red-600" : "text-zinc-500"}`}
-              >
-                {invalidEmail ? t("me.share.emailInvalid") : t("me.share.recipientHint")}
-              </p>
-            </fieldset>
-          </div>
-
-          <aside className="h-fit rounded-2xl border border-zinc-200 bg-zinc-50 p-5 lg:sticky lg:top-24">
-            <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-              {t("me.share.review")}
-            </p>
-            <dl className="mt-4 space-y-4 text-sm">
-              <div>
-                <dt className="text-zinc-500">{t("me.share.destination")}</dt>
-                <dd className="mt-1 font-semibold leading-relaxed text-zinc-900">
-                  {chosenPreset?.audience ?? t("me.share.destinationCustom")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">{t("me.share.purpose")}</dt>
-                <dd className="mt-1 font-semibold leading-relaxed text-zinc-900">
-                  {purpose || (locale === "ko" ? "입력하지 않음" : "Not provided")}
-                </dd>
-              </div>
-              {level === "LEVEL_1" && (
-                <div>
-                  <dt className="text-zinc-500">{t("me.share.threshold")}</dt>
-                  <dd className="mt-1 font-semibold text-zinc-900">
-                    ${Number(thresholdUsd || 0).toLocaleString(locale === "ko" ? "ko-KR" : "en-US")}
-                    {t("me.share.perMonth")}
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-zinc-500">{t("me.share.included")}</dt>
-                <dd className="mt-1 font-semibold text-zinc-900">{chosenLevel.title}</dd>
-                <dd className="mt-1 text-xs leading-relaxed text-zinc-500">{chosenLevel.detail}</dd>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <dt className="text-zinc-500">{t("me.share.period")}</dt>
-                  <dd className="mt-1 font-semibold text-zinc-900">
-                    {t(`me.share.range.${rangeMonths}`)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-zinc-500">{t("me.share.expiration")}</dt>
-                  <dd className="mt-1 font-semibold text-zinc-900">
-                    {t("me.share.expiresIn").replace("{days}", expiresInDays)}
-                  </dd>
-                </div>
-              </div>
-              <div>
-                <dt className="text-zinc-500">{t("me.share.delivery")}</dt>
-                <dd className="mt-1 break-all font-semibold text-zinc-900">
-                  {recipientEmail || t("me.share.deliveryLink")}
-                </dd>
-              </div>
-            </dl>
-            <Button
-              className="mt-6 w-full py-3"
-              onClick={createDisclosure}
-              disabled={busy || !purpose.trim() || invalidEmail || invalidThreshold}
-            >
-              {busy ? t("me.share.issuing") : t("me.share.create")}
-            </Button>
-            <p className="mt-3 text-center text-xs leading-relaxed text-zinc-500">
-              {t("me.share.controlNote")}
-            </p>
-          </aside>
-        </div>
-        {emailStatus && (
-          <p
-            className={`mt-3 rounded-lg px-3.5 py-2.5 text-sm ${
-              emailStatus === "sent"
-                ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border border-red-200 bg-red-50 text-red-700"
-            }`}
-          >
-            {emailStatus === "sent" ? t("me.share.emailSent") : t("me.share.emailFailed")}
-          </p>
-        )}
-
-        {shareUrl && (
-          <div className="mt-6 flex flex-col items-center gap-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 sm:flex-row sm:items-start">
-            {qrDataUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={qrDataUrl}
-                alt="verification QR"
-                className="h-36 w-36 rounded-lg border border-emerald-200 bg-white p-1.5"
-              />
-            )}
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="text-base font-semibold text-emerald-900">{t("me.share.created")}</p>
-              <p className="mt-1 text-emerald-800">{t("me.share.linkOnce")}</p>
-              <a
-                href={shareUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 block break-all rounded-lg bg-white/80 px-3 py-2 font-mono text-xs text-emerald-800 ring-1 ring-emerald-200"
-              >
-                {shareUrl}
-              </a>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={copyShareLink}>
-                  {copied ? t("me.share.copied") : t("me.share.copy")}
+              <aside className="h-fit rounded-2xl border border-zinc-200 bg-zinc-50 p-5 lg:sticky lg:top-24">
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                  {t("me.share.review")}
+                </p>
+                <dl className="mt-4 space-y-4 text-sm">
+                  <div>
+                    <dt className="text-zinc-500">{t("me.share.destination")}</dt>
+                    <dd className="mt-1 font-semibold leading-relaxed text-zinc-900">
+                      {chosenPreset?.audience ?? t("me.share.destinationCustom")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">{t("me.share.purpose")}</dt>
+                    <dd className="mt-1 font-semibold leading-relaxed text-zinc-900">
+                      {purpose || (locale === "ko" ? "입력하지 않음" : "Not provided")}
+                    </dd>
+                  </div>
+                  {level === "LEVEL_1" && (
+                    <div>
+                      <dt className="text-zinc-500">{t("me.share.threshold")}</dt>
+                      <dd className="mt-1 font-semibold text-zinc-900">
+                        $
+                        {Number(thresholdUsd || 0).toLocaleString(
+                          locale === "ko" ? "ko-KR" : "en-US",
+                        )}
+                        {t("me.share.perMonth")}
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-zinc-500">{t("me.share.included")}</dt>
+                    <dd className="mt-1 font-semibold text-zinc-900">{chosenLevel.title}</dd>
+                    <dd className="mt-1 text-xs leading-relaxed text-zinc-500">
+                      {chosenLevel.detail}
+                    </dd>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <dt className="text-zinc-500">{t("me.share.period")}</dt>
+                      <dd className="mt-1 font-semibold text-zinc-900">
+                        {t(`me.share.range.${rangeMonths}`)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-zinc-500">{t("me.share.expiration")}</dt>
+                      <dd className="mt-1 font-semibold text-zinc-900">
+                        {t("me.share.expiresIn").replace("{days}", expiresInDays)}
+                      </dd>
+                    </div>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">{t("me.share.delivery")}</dt>
+                    <dd className="mt-1 break-all font-semibold text-zinc-900">
+                      {recipientEmail || t("me.share.deliveryLink")}
+                    </dd>
+                  </div>
+                </dl>
+                <Button
+                  className="mt-6 w-full py-3"
+                  onClick={createDisclosure}
+                  disabled={busy || !purpose.trim() || invalidEmail || invalidThreshold}
+                >
+                  {busy ? t("me.share.issuing") : t("me.share.create")}
                 </Button>
-                {lastReportId && (
-                  <Button size="sm" onClick={() => downloadPdf(lastReportId)}>
-                    {t("me.share.pdf")}
-                  </Button>
-                )}
-              </div>
+                <p className="mt-3 text-center text-xs leading-relaxed text-zinc-500">
+                  {t("me.share.controlNote")}
+                </p>
+              </aside>
             </div>
-          </div>
-        )}
-
-        {grants.length > 0 && (
-          <ul className="mt-4 flex flex-col gap-2">
-            {grants.map((grant) => (
-              <li
-                key={grant.id}
-                className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            {emailStatus && (
+              <p
+                className={`mt-3 rounded-lg px-3.5 py-2.5 text-sm ${
+                  emailStatus === "sent"
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border border-red-200 bg-red-50 text-red-700"
+                }`}
               >
-                <span className="flex min-w-0 flex-wrap items-center gap-2.5 text-[15px]">
-                  <Badge>{statusLabel(grant.level)}</Badge>
-                  <span className="text-zinc-700">{grant.purpose}</span>
-                  <span className="text-sm text-zinc-400">
-                    {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
-                  </span>
-                  {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
-                  {!grant.revokedAt && grant.reports[0] && (
-                    <Badge tone={grant.reports[0].status}>
-                      {statusLabel(grant.reports[0].status)}
-                    </Badge>
-                  )}
-                </span>
-                <span className="flex gap-2">
-                  {!grant.revokedAt && grant.reports[0] && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => downloadPdf(grant.reports[0]!.id)}
-                    >
-                      PDF
-                    </Button>
-                  )}
-                  {!grant.revokedAt && (
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => revokeGrant(grant.id)}
-                      disabled={busy}
-                    >
-                      {t("me.share.revoke")}
-                    </Button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+                {emailStatus === "sent" ? t("me.share.emailSent") : t("me.share.emailFailed")}
+              </p>
+            )}
 
-      <div id="card-wallet" className="scroll-mt-6" />
-      {me && (
-        <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
-          {me.wallets.length === 0 ? (
-            <p className="text-sm text-zinc-400">{t("me.wallet.empty")}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {me.wallets.map((wallet) => (
-                <li key={wallet.id} className="flex items-center gap-3">
-                  <code className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm text-zinc-600">
-                    {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
-                  </code>
-                  {wallet.isDefault && <Badge tone="CONFIRMED">{t("me.wallet.default")}</Badge>}
-                </li>
-              ))}
-            </ul>
+            {shareUrl && (
+              <div className="mt-6 flex flex-col items-center gap-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 sm:flex-row sm:items-start">
+                {qrDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={qrDataUrl}
+                    alt="verification QR"
+                    className="h-36 w-36 rounded-lg border border-emerald-200 bg-white p-1.5"
+                  />
+                )}
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="text-base font-semibold text-emerald-900">
+                    {t("me.share.created")}
+                  </p>
+                  <p className="mt-1 text-emerald-800">{t("me.share.linkOnce")}</p>
+                  <a
+                    href={shareUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block break-all rounded-lg bg-white/80 px-3 py-2 font-mono text-xs text-emerald-800 ring-1 ring-emerald-200"
+                  >
+                    {shareUrl}
+                  </a>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" onClick={copyShareLink}>
+                      {copied ? t("me.share.copied") : t("me.share.copy")}
+                    </Button>
+                    {lastReportId && (
+                      <Button size="sm" onClick={() => downloadPdf(lastReportId)}>
+                        {t("me.share.pdf")}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {grants.length > 0 && (
+              <ul className="mt-4 flex flex-col gap-2">
+                {grants.map((grant) => (
+                  <li
+                    key={grant.id}
+                    className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="flex min-w-0 flex-wrap items-center gap-2.5 text-[15px]">
+                      <Badge>{statusLabel(grant.level)}</Badge>
+                      <span className="text-zinc-700">{grant.purpose}</span>
+                      <span className="text-sm text-zinc-400">
+                        {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
+                      </span>
+                      {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
+                      {!grant.revokedAt && grant.reports[0] && (
+                        <Badge tone={grant.reports[0].status}>
+                          {statusLabel(grant.reports[0].status)}
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="flex gap-2">
+                      {!grant.revokedAt && grant.reports[0] && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => downloadPdf(grant.reports[0]!.id)}
+                        >
+                          PDF
+                        </Button>
+                      )}
+                      {!grant.revokedAt && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => revokeGrant(grant.id)}
+                          disabled={busy}
+                        >
+                          {t("me.share.revoke")}
+                        </Button>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <div id="card-wallet" className="scroll-mt-6" />
+          {me && (
+            <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
+              {me.wallets.length === 0 ? (
+                <p className="text-sm text-zinc-400">{t("me.wallet.empty")}</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {me.wallets.map((wallet) => (
+                    <li key={wallet.id} className="flex items-center gap-3">
+                      <code className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm text-zinc-600">
+                        {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
+                      </code>
+                      {wallet.isDefault && <Badge tone="CONFIRMED">{t("me.wallet.default")}</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4">
+                <Button variant="violet" onClick={registerWallet} disabled={busy}>
+                  {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
+                </Button>
+              </div>
+            </Card>
           )}
-          <div className="mt-4">
-            <Button variant="violet" onClick={registerWallet} disabled={busy}>
-              {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
-            </Button>
-          </div>
-        </Card>
+        </>
       )}
     </AppShell>
   );

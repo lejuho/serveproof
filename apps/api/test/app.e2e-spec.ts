@@ -13,6 +13,7 @@ import { PoliciesModule } from "../src/policies/policies.module";
 import { PrismaModule } from "../src/prisma/prisma.module";
 import { ProvidersModule } from "../src/providers/providers.module";
 import { WorkersModule } from "../src/workers/workers.module";
+import { StaffingModule } from "../src/staffing/staffing.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { WorkersModule } from "../src/workers/workers.module";
     MappingsModule,
     AllocationsModule,
     ProvidersModule,
+    StaffingModule,
   ],
 })
 class IntegrationTestModule {}
@@ -217,6 +219,89 @@ describe("ServeProof API integration", () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.backfilledShifts).toBe(1);
+      });
+
+    await api()
+      .post(`/staffing/venues/${venueId}/shifts`)
+      .set(bearer(viewer))
+      .send({
+        role: "SERVER",
+        startsAt: "2099-08-18T17:00:00.000Z",
+        endsAt: "2099-08-18T22:00:00.000Z",
+        hourlyRateUsdCents: 1800,
+      })
+      .expect(403);
+    const openShift = await api()
+      .post(`/staffing/venues/${venueId}/shifts`)
+      .set(bearer(manager))
+      .send({
+        role: "SERVER",
+        description: "Closed-network staffing test",
+        startsAt: "2099-08-18T17:00:00.000Z",
+        endsAt: "2099-08-18T22:00:00.000Z",
+        hourlyRateUsdCents: 1800,
+        expectedTipUsdCents: 3000,
+        headcount: 1,
+      })
+      .expect(201);
+    await api()
+      .post(`/staffing/shifts/${openShift.body.id}/publish`)
+      .set(bearer(manager))
+      .send({})
+      .expect(201)
+      .expect(({ body }) => expect(body.status).toBe("OPEN"));
+    await api()
+      .get("/staffing/workers/me/shifts")
+      .set(bearer(worker))
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.map((shift: { id: string }) => shift.id)).toContain(openShift.body.id),
+      );
+    const accepted = await api()
+      .post(`/staffing/shifts/${openShift.body.id}/respond`)
+      .set(bearer(worker))
+      .send({ response: "ACCEPT" })
+      .expect(201);
+    expect(accepted.body.status).toBe("ACCEPTED");
+    await api()
+      .post(`/staffing/assignments/${accepted.body.id}/clock-in`)
+      .set(bearer(worker))
+      .send({})
+      .expect(201);
+    await api()
+      .post(`/staffing/assignments/${accepted.body.id}/clock-out`)
+      .set(bearer(worker))
+      .send({})
+      .expect(201);
+    await api()
+      .post(`/staffing/assignments/${accepted.body.id}/approve`)
+      .set(bearer(viewer))
+      .send({})
+      .expect(403);
+    await api()
+      .post(`/staffing/assignments/${accepted.body.id}/approve`)
+      .set(bearer(manager))
+      .send({})
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.status).toBe("APPROVED");
+        expect(body.shiftEvidenceId).toEqual(expect.any(String));
+      });
+    await api()
+      .get(`/venues/${venueId}/shift-evidence?businessDate=2099-08-18`)
+      .set(bearer(manager))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              provider: "serveproof_staffing",
+              ingestSource: "PLATFORM_ATTESTED",
+              mappedWorkerId: workerId,
+              shiftStatus: "APPROVED",
+            }),
+          ]),
+        );
       });
 
     await api()
