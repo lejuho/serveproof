@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ServeProof 사업장 대시보드 개선 보고서</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, "Noto Sans KR", system-ui, sans-serif; color: #18181b; background: #f4f4f5; }
+      body { margin: 0; }
+      main { max-width: 1080px; margin: 0 auto; padding: 56px 24px 80px; }
+      h1 { margin: 0; font-size: 36px; letter-spacing: -.04em; }
+      h2 { margin: 48px 0 16px; font-size: 22px; }
+      p { color: #52525b; line-height: 1.7; }
+      .eyebrow { color: #047857; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+      .summary, .idea { border: 1px solid #e4e4e7; border-radius: 18px; background: white; padding: 24px; box-shadow: 0 1px 2px rgb(0 0 0 / .04); }
+      .summary { margin-top: 28px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+      .idea h3 { margin: 0 0 8px; }
+      .idea ul { margin: 12px 0 0; padding-left: 20px; color: #52525b; line-height: 1.7; }
+      figure { margin: 0; border: 1px solid #e4e4e7; border-radius: 16px; overflow: hidden; background: white; }
+      figure img { width: 100%; display: block; aspect-ratio: 16 / 10; object-fit: cover; }
+      figcaption { padding: 14px 16px 18px; color: #52525b; font-size: 14px; line-height: 1.55; }
+      code { border-radius: 6px; background: #f4f4f5; padding: 2px 6px; }
+      .flow { white-space: pre-wrap; border-radius: 16px; background: #18181b; color: #fafafa; padding: 22px; line-height: 1.65; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Lazyweb design improve · 2026-08-17</p>
+      <h1>사업장 대시보드의 일상 업무를 먼저 보이게</h1>
+      <div class="summary">
+        <strong>핵심 판단</strong>
+        <p>현재 화면은 최초 설정, 매일의 마감, 사후 검증이 모두 같은 높이와 순서로 나열되어 운영자가 매번 전체 설명서를 읽는 느낌을 줍니다. 정상 상태에서는 “계산 → 경로 확인 → 지급”만 주 흐름으로 남기고, 데이터 가져오기·직원 연결과 소득 재계산은 접힌 보조 영역으로 유지하는 편이 적합합니다.</p>
+      </div>
+
+      <h2>적용한 개선</h2>
+      <div class="grid">
+        <article class="idea">
+          <h3>1. 준비 작업 통합</h3>
+          <p>구성원 연결, 기록 가져오기, 직원 계정 연결을 <b>데이터 및 직원 준비</b> 한 영역으로 묶었습니다.</p>
+          <ul><li>정상 상태에서는 접힘</li><li>미연결 직원이 있으면 개수 표시</li><li>오늘 할 일에서 직원 연결을 누르면 자동으로 펼침</li></ul>
+        </article>
+        <article class="idea">
+          <h3>2. 오늘의 마감 3단계</h3>
+          <p>사업장 관리자의 반복 업무만 <b>배분 계산·승인 → 경로별 마감 → 지급</b>의 1–3단계로 다시 번호를 매겼습니다.</p>
+        </article>
+        <article class="idea">
+          <h3>3. 검증은 예외 처리로</h3>
+          <p>소득 상태 재계산은 정상적인 매일 단계가 아니므로 <b>검증 및 이력</b>에 접었습니다. 지급 기록 변경 또는 불일치가 있을 때만 사용합니다.</p>
+        </article>
+        <article class="idea">
+          <h3>4. 날짜 선택기 언어 동기화</h3>
+          <p>언어 전환 시 문서의 <code>html lang</code>과 <code>datetime-local</code> 입력의 <code>lang</code>을 함께 변경해 EN 화면에서 한국어 오전·오후가 남는 원인을 제거했습니다.</p>
+        </article>
+      </div>
+
+      <h2>새 정보 구조</h2>
+      <div class="flow">오늘 할 일
+└ 필요한 예외로 바로 이동
+
+데이터 및 직원 준비 (기본 접힘)
+├ 구성원 및 연결
+├ 팁 및 근무 기록 가져오기
+└ 직원 계정 연결
+
+오늘의 마감
+1 배분 계산 및 승인
+2 정산 경로별 마감
+3 지급
+
+검증 및 이력 (기본 접힘)
+└ 소득 상태 확인 및 재계산</div>
+
+      <h2>참고 화면</h2>
+      <div class="grid">
+        <figure>
+          <img src="references/deel-dashboard.png" alt="Deel payroll dashboard" />
+          <figcaption><b>Deel</b> — 다가오는 작업과 최근 지급을 별도 카드로 보여주며, 운영자가 현재 필요한 행동부터 읽게 합니다.</figcaption>
+        </figure>
+        <figure>
+          <img src="references/7shifts-payroll-periods.png" alt="7shifts payroll periods" />
+          <figcaption><b>7shifts</b> — 급여 기간을 상태 단위 목록으로 구성해, 마감 단위와 진행 상태를 한 번에 판단하게 합니다.</figcaption>
+        </figure>
+        <figure>
+          <img src="references/deputy-create-shift.jpg" alt="Deputy create shift form" />
+          <figcaption><b>Deputy</b> — 시프트 생성 입력을 작업 맥락 안의 집중된 폼으로 제공하며, 상시 대시보드 정보와 분리합니다.</figcaption>
+        </figure>
+      </div>
+    </main>
+  </body>
+</html>

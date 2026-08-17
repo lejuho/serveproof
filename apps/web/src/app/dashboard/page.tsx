@@ -224,6 +224,7 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [workspace, setWorkspace] = useState<"staffing" | "settlement">("settlement");
+  const [preparationOpen, setPreparationOpen] = useState(false);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   // React state does not update synchronously, so `busy` alone cannot stop two
   // clicks in the same render frame from opening parallel wallet-sign flows.
@@ -403,6 +404,11 @@ export default function DashboardPage() {
 
   const scrollToCard = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const openPreparation = () => {
+    setPreparationOpen(true);
+    window.setTimeout(() => scrollToCard("card-mapping"), 0);
+  };
 
   // 오늘 할 일 타일 클릭 → 해당 배치를 3단계 카드에 로드하고 이동
   const openBatch = (b: { id: string; businessDate: string }) =>
@@ -640,10 +646,7 @@ export default function DashboardPage() {
                 label: t("dash.todo.unmapped"),
                 value: String(actionItems.unmappedWorkerCount),
                 urgent: actionItems.unmappedWorkerCount > 0,
-                action:
-                  actionItems.unmappedWorkerCount > 0
-                    ? () => scrollToCard("card-mapping")
-                    : undefined,
+                action: actionItems.unmappedWorkerCount > 0 ? openPreparation : undefined,
                 cta: t("dash.todo.cta.map"),
               },
               {
@@ -769,117 +772,173 @@ export default function DashboardPage() {
 
       {workspace === "settlement" && (
         <>
-          {workerConnections && <WorkerConnections data={workerConnections} locale={locale} />}
-
-          <Card
-            step={1}
-            title={locale === "ko" ? "팁 및 근무 기록 가져오기" : "CSV Import"}
-            description={t("dash.csv.desc")}
+          <details
+            open={preparationOpen}
+            onToggle={(event) => setPreparationOpen(event.currentTarget.open)}
+            className="group rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
           >
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                {t("dash.source.label")}
+            <summary className="flex cursor-pointer list-none items-center gap-3 px-6 py-5 [&::-webkit-details-marker]:hidden">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-500">
+                {actionItems?.unmappedWorkerCount ? "!" : "✓"}
               </span>
-              <Button size="sm" variant="secondary" onClick={fillToastDemoCsv} disabled={busy}>
-                🍞 {t("dash.source.toast")}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={syncSquare}
-                disabled={busy || !venueId}
-              >
-                ⬛ {t("dash.source.square")}
-              </Button>
-              {syncMessage && <span className="text-sm text-emerald-700">{syncMessage}</span>}
-            </div>
-            <textarea
-              className={`${inputClass} h-32 font-mono text-xs leading-relaxed`}
-              placeholder="provider,venue_external_id,worker_external_id,..."
-              value={csvText}
-              onChange={(e) => setCsvText(e.target.value)}
-            />
-            <div className="mt-3 flex items-center gap-4">
-              <Button variant="dark" onClick={importCsv} disabled={busy || !csvText || !venueId}>
-                {locale === "ko" ? "가져오기" : "Import"}
-              </Button>
-              {importResult && (
-                <p className="text-sm text-zinc-500">
-                  {locale === "ko" ? (
-                    <>
-                      팁 <b className="text-zinc-800">{importResult.tipsUpserted}건</b>, 근무 기록{" "}
-                      <b className="text-zinc-800">{importResult.shiftsUpserted}건</b> (매핑{" "}
-                      {importResult.mappedShifts} / 연결 필요 {importResult.unmappedShifts})
-                      {importResult.errors.length > 0 && (
-                        <span className="text-red-600">. 오류 {importResult.errors.length}건</span>
-                      )}
-                      {!!importResult.businessDates?.length && (
-                        <span className="text-emerald-700">
-                          {" "}
-                          . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로 자동
-                          선택했습니다.
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <b className="text-zinc-800">{importResult.tipsUpserted}</b> tips,{" "}
-                      <b className="text-zinc-800">{importResult.shiftsUpserted}</b> shifts (
-                      {importResult.mappedShifts} mapped / {importResult.unmappedShifts} unmapped)
-                      {importResult.errors.length > 0 && (
-                        <span className="text-red-600">. {importResult.errors.length} errors</span>
-                      )}
-                      {!!importResult.businessDates?.length && (
-                        <span className="text-emerald-700">
-                          {" "}
-                          . Detected {importResult.businessDates.join(", ")}; calculation date was
-                          selected automatically.
-                        </span>
-                      )}
-                    </>
-                  )}
-                </p>
-              )}
-            </div>
-          </Card>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-semibold text-zinc-900">
+                  {locale === "ko" ? "데이터 및 직원 준비" : "Data and worker setup"}
+                </span>
+                <span className="mt-0.5 block text-sm text-zinc-500">
+                  {actionItems?.unmappedWorkerCount
+                    ? locale === "ko"
+                      ? `연결이 필요한 직원 ${actionItems.unmappedWorkerCount}명이 있습니다.`
+                      : `${actionItems.unmappedWorkerCount} workers need mapping.`
+                    : locale === "ko"
+                      ? "기록 가져오기와 직원 연결은 필요할 때만 펼쳐서 처리합니다."
+                      : "Open only when importing records or connecting workers."}
+                </span>
+              </span>
+              <span className="text-sm font-semibold text-zinc-500 group-open:hidden">
+                {locale === "ko" ? "펼치기" : "Open"} ↓
+              </span>
+              <span className="hidden text-sm font-semibold text-zinc-500 group-open:inline">
+                {locale === "ko" ? "접기" : "Close"} ↑
+              </span>
+            </summary>
 
-          <div id="card-mapping" className="scroll-mt-6" />
-          <Card
-            step={2}
-            title={locale === "ko" ? "직원 계정 연결" : "Worker Mapping"}
-            description={t("dash.mapping.desc")}
-          >
-            {unmapped && unmapped.pendingMappings.length === 0 ? (
-              <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {unmapped?.pendingMappings.map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
+            <div className="flex flex-col gap-4 border-t border-zinc-100 p-4 sm:p-6">
+              {workerConnections && <WorkerConnections data={workerConnections} locale={locale} />}
+
+              <Card
+                title={locale === "ko" ? "팁 및 근무 기록 가져오기" : "CSV Import"}
+                description={t("dash.csv.desc")}
+              >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    {t("dash.source.label")}
+                  </span>
+                  <Button size="sm" variant="secondary" onClick={fillToastDemoCsv} disabled={busy}>
+                    🍞 {t("dash.source.toast")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={syncSquare}
+                    disabled={busy || !venueId}
                   >
-                    <span className="text-[15px]">
-                      <b className="font-mono text-sm">{m.externalWorkerId}</b>
-                      <span className="text-zinc-400"> ({m.provider})</span>
-                      <span className="mx-2 text-zinc-400">→</span>
-                      {m.worker.user.displayName}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="dark"
-                      onClick={() => verifyMapping(m.id)}
-                      disabled={busy}
-                    >
-                      {t("dash.mapping.confirm")}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+                    ⬛ {t("dash.source.square")}
+                  </Button>
+                  {syncMessage && <span className="text-sm text-emerald-700">{syncMessage}</span>}
+                </div>
+                <textarea
+                  className={`${inputClass} h-32 font-mono text-xs leading-relaxed`}
+                  placeholder="provider,venue_external_id,worker_external_id,..."
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                />
+                <div className="mt-3 flex items-center gap-4">
+                  <Button
+                    variant="dark"
+                    onClick={importCsv}
+                    disabled={busy || !csvText || !venueId}
+                  >
+                    {locale === "ko" ? "가져오기" : "Import"}
+                  </Button>
+                  {importResult && (
+                    <p className="text-sm text-zinc-500">
+                      {locale === "ko" ? (
+                        <>
+                          팁 <b className="text-zinc-800">{importResult.tipsUpserted}건</b>, 근무
+                          기록 <b className="text-zinc-800">{importResult.shiftsUpserted}건</b>{" "}
+                          (매핑 {importResult.mappedShifts} / 연결 필요{" "}
+                          {importResult.unmappedShifts})
+                          {importResult.errors.length > 0 && (
+                            <span className="text-red-600">
+                              . 오류 {importResult.errors.length}건
+                            </span>
+                          )}
+                          {!!importResult.businessDates?.length && (
+                            <span className="text-emerald-700">
+                              {" "}
+                              . 영업일 {importResult.businessDates.join(", ")}을 확인해 계산 날짜로
+                              자동 선택했습니다.
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <b className="text-zinc-800">{importResult.tipsUpserted}</b> tips,{" "}
+                          <b className="text-zinc-800">{importResult.shiftsUpserted}</b> shifts (
+                          {importResult.mappedShifts} mapped / {importResult.unmappedShifts}{" "}
+                          unmapped)
+                          {importResult.errors.length > 0 && (
+                            <span className="text-red-600">
+                              . {importResult.errors.length} errors
+                            </span>
+                          )}
+                          {!!importResult.businessDates?.length && (
+                            <span className="text-emerald-700">
+                              {" "}
+                              . Detected {importResult.businessDates.join(", ")}; calculation date
+                              was selected automatically.
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </Card>
+
+              <div id="card-mapping" className="scroll-mt-6" />
+              <Card
+                title={locale === "ko" ? "직원 계정 연결" : "Worker Mapping"}
+                description={t("dash.mapping.desc")}
+              >
+                {unmapped && unmapped.pendingMappings.length === 0 ? (
+                  <p className="text-sm text-zinc-400">{t("dash.mapping.empty")}</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {unmapped?.pendingMappings.map((m) => (
+                      <li
+                        key={m.id}
+                        className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
+                      >
+                        <span className="text-[15px]">
+                          <b className="font-mono text-sm">{m.externalWorkerId}</b>
+                          <span className="text-zinc-400"> ({m.provider})</span>
+                          <span className="mx-2 text-zinc-400">→</span>
+                          {m.worker.user.displayName}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="dark"
+                          onClick={() => verifyMapping(m.id)}
+                          disabled={busy}
+                        >
+                          {t("dash.mapping.confirm")}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+          </details>
+
+          <div className="px-1 pt-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+              {locale === "ko" ? "오늘의 마감" : "Today’s close"}
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-zinc-900">
+              {locale === "ko" ? "계산부터 지급까지" : "From calculation to payout"}
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {locale === "ko"
+                ? "영업일을 선택해 배분을 승인하고, 경로별 준비 상태를 확인한 뒤 지급을 완료합니다."
+                : "Choose a business date, approve allocations, review each rail, and complete payouts."}
+            </p>
+          </div>
 
           <div id="card-alloc" className="scroll-mt-6" />
-          <Card step={3} title={t("dash.alloc.title")} description={t("dash.alloc.desc")}>
+          <Card step={1} title={t("dash.alloc.title")} description={t("dash.alloc.desc")}>
             <div className="flex flex-wrap items-center gap-3">
               <input
                 type="date"
@@ -965,6 +1024,7 @@ export default function DashboardPage() {
 
           {settlementClose && (
             <Card
+              step={2}
               title={locale === "ko" ? "정산 경로별 마감" : "Settlement close by route"}
               description={
                 locale === "ko"
@@ -1078,7 +1138,7 @@ export default function DashboardPage() {
           )}
 
           {batch && payable && (
-            <Card step={4} title={t("dash.payout.title")} description={t("dash.payout.desc")}>
+            <Card step={3} title={t("dash.payout.title")} description={t("dash.payout.desc")}>
               <Callout tone="amber">{t("dash.payout.callout")}</Callout>
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3">
                 {walletAddress ? (
@@ -1229,28 +1289,49 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          <Card
-            step={5}
-            title={locale === "ko" ? "소득 상태 확인" : "Income status"}
-            description={t("dash.income.desc")}
-          >
-            <div className="flex items-center gap-4">
-              <Button variant="dark" onClick={rebuildIncome} disabled={busy || !venueId}>
-                {t("dash.income.rebuild")}
-              </Button>
-              {rebuildResult && (
-                <span className="text-sm text-zinc-500">
-                  {locale === "ko"
-                    ? `소득 내역 ${rebuildResult.entriesUpserted}건을 새로고침했습니다. 확인 필요 항목은 ${rebuildResult.alerts}건입니다.`
-                    : `${rebuildResult.entriesUpserted} income entries refreshed. ${rebuildResult.alerts} items require review.`}
+          <details className="group rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <summary className="flex cursor-pointer list-none items-center gap-3 px-6 py-5 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-semibold text-zinc-900">
+                  {locale === "ko" ? "검증 및 이력" : "Verification and history"}
                 </span>
-              )}
+                <span className="mt-0.5 block text-sm text-zinc-500">
+                  {locale === "ko"
+                    ? "지급 내역을 변경했거나 소득 상태가 맞지 않을 때 확인합니다."
+                    : "Review after payout changes or when income status needs reconciliation."}
+                </span>
+              </span>
+              <span className="text-sm font-semibold text-zinc-500 group-open:hidden">
+                {locale === "ko" ? "펼치기" : "Open"} ↓
+              </span>
+              <span className="hidden text-sm font-semibold text-zinc-500 group-open:inline">
+                {locale === "ko" ? "접기" : "Close"} ↑
+              </span>
+            </summary>
+            <div className="border-t border-zinc-100 px-6 py-5">
+              <h3 className="font-semibold text-zinc-900">
+                {locale === "ko" ? "소득 상태 확인" : "Income status"}
+              </h3>
+              <p className="mt-1 text-sm text-zinc-500">{t("dash.income.desc")}</p>
+              <div className="mt-4 flex flex-wrap items-center gap-4">
+                <Button variant="dark" onClick={rebuildIncome} disabled={busy || !venueId}>
+                  {t("dash.income.rebuild")}
+                </Button>
+                {rebuildResult && (
+                  <span className="text-sm text-zinc-500">
+                    {locale === "ko"
+                      ? `소득 내역 ${rebuildResult.entriesUpserted}건을 새로고침했습니다. 확인 필요 항목은 ${rebuildResult.alerts}건입니다.`
+                      : `${rebuildResult.entriesUpserted} income entries refreshed. ${rebuildResult.alerts} items require review.`}
+                  </span>
+                )}
+              </div>
+              <p className="mt-3 text-sm text-zinc-400">
+                {t("dash.income.note1")}{" "}
+                <b className="text-zinc-600">{t("dash.income.myIncome")}</b>{" "}
+                {t("dash.income.note2")}
+              </p>
             </div>
-            <p className="mt-3 text-sm text-zinc-400">
-              {t("dash.income.note1")} <b className="text-zinc-600">{t("dash.income.myIncome")}</b>{" "}
-              {t("dash.income.note2")}
-            </p>
-          </Card>
+          </details>
         </>
       )}
     </AppShell>

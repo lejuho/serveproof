@@ -212,6 +212,7 @@ export function VenueStaffingCard({
             {ko ? "시작" : "Starts"}
             <input
               type="datetime-local"
+              lang={locale}
               className={`${inputClass} mt-1`}
               value={startsAt}
               onChange={(event) => setStartsAt(event.target.value)}
@@ -221,6 +222,7 @@ export function VenueStaffingCard({
             {ko ? "종료" : "Ends"}
             <input
               type="datetime-local"
+              lang={locale}
               className={`${inputClass} mt-1`}
               value={endsAt}
               onChange={(event) => setEndsAt(event.target.value)}
