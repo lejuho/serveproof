@@ -51,6 +51,11 @@ export class PayoutsService implements OnModuleDestroy {
       },
     });
     if (!allocation) throw new NotFoundException(`Allocation ${allocationId} not found`);
+    if (!allocation.workerId || !allocation.worker) {
+      throw new BadRequestException(
+        "This share is held for a worker who has not connected their account yet",
+      );
+    }
     if (!["PAYABLE", "PARTIALLY_PAID"].includes(allocation.batch.status)) {
       throw new BadRequestException(
         `Batch is ${allocation.batch.status}; payouts require an approved (PAYABLE) batch`,
@@ -370,6 +375,11 @@ export class PayoutsService implements OnModuleDestroy {
       include: { batch: true },
     });
     if (!allocation) throw new NotFoundException(`Allocation ${allocationId} not found`);
+    if (!allocation.workerId) {
+      throw new BadRequestException(
+        "This share is held for a worker who has not connected their account yet",
+      );
+    }
     if (allocation.payoutStatus === "PAID") {
       const finalized = await this.prisma.payout.findFirst({
         where: { allocationId: allocation.id, status: "FINALIZED" },

@@ -64,7 +64,10 @@ interface Allocation {
   payoutStatus: "UNPAID" | "PENDING" | "PAID" | "FAILED";
   payoutRail: string | null;
   plannedPayoutRail: string | null;
-  worker: { defaultWalletId: string | null; user: { displayName: string } };
+  provider: string | null;
+  externalWorkerId: string | null;
+  // null → 보류 배분: 아직 계정을 연결하지 않은 외부 직원의 몫
+  worker: { defaultWalletId: string | null; user: { displayName: string } } | null;
 }
 interface SettlementClose {
   businessDate: string;
@@ -85,6 +88,7 @@ interface SettlementClose {
     missingWalletCount: number;
   };
   unassigned: { workerCount: number; totalUsdCents: number };
+  held: { workerCount: number; totalUsdCents: number };
   treasury: {
     status: "AVAILABLE" | "UNAVAILABLE" | "MISCONFIGURED";
     checkedAt: string;
@@ -1246,7 +1250,18 @@ export default function DashboardPage() {
                     <tbody>
                       {batch.allocations.map((a) => (
                         <tr key={a.id}>
-                          <td className={tableCellClass}>{a.worker.user.displayName}</td>
+                          <td className={tableCellClass}>
+                            {a.worker ? (
+                              a.worker.user.displayName
+                            ) : (
+                              <span className="inline-flex flex-wrap items-center gap-2">
+                                <code className="font-mono text-sm">{a.externalWorkerId}</code>
+                                <Badge tone="REVIEW_REQUIRED">
+                                  {locale === "ko" ? "연결 대기" : "Awaiting connection"}
+                                </Badge>
+                              </span>
+                            )}
+                          </td>
                           <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
                             {usd(a.netAllocatedUsdCents)}
                           </td>
@@ -1255,7 +1270,7 @@ export default function DashboardPage() {
                               className={`${inputClass} py-1.5 text-sm`}
                               value={a.plannedPayoutRail ?? ""}
                               onChange={(e) => setPlannedRail(a.id, e.target.value)}
-                              disabled={busy}
+                              disabled={busy || !a.worker}
                             >
                               <option value="" disabled>
                                 {locale === "ko" ? "미지정" : "Unassigned"}
@@ -1381,6 +1396,13 @@ export default function DashboardPage() {
                     : `${settlementClose.unassigned.workerCount} workers (${usd(settlementClose.unassigned.totalUsdCents)}) have no settlement route.`}
                 </Callout>
               )}
+              {(settlementClose.held?.workerCount ?? 0) > 0 && (
+                <Callout tone="amber">
+                  {locale === "ko"
+                    ? `계정 연결 대기 몫 ${settlementClose.held.workerCount}건 · ${usd(settlementClose.held.totalUsdCents)} — 직원이 연결을 수락하면 지급 가능해집니다.`
+                    : `${settlementClose.held.workerCount} held share(s) totaling ${usd(settlementClose.held.totalUsdCents)} await account connection before payout.`}
+                </Callout>
+              )}
               <Callout tone="amber">
                 {locale === "ko"
                   ? "Devnet tUSDC는 금전 가치가 없는 테스트 자산입니다."
@@ -1433,7 +1455,16 @@ export default function DashboardPage() {
                   {batch.allocations.map((a) => (
                     <tr key={a.id}>
                       <td className={`${tableCellClass} font-medium text-zinc-900`}>
-                        {a.worker.user.displayName}
+                        {a.worker ? (
+                          a.worker.user.displayName
+                        ) : (
+                          <span className="inline-flex flex-wrap items-center gap-2">
+                            <code className="font-mono text-sm">{a.externalWorkerId}</code>
+                            <Badge tone="REVIEW_REQUIRED">
+                              {locale === "ko" ? "연결 대기" : "Awaiting connection"}
+                            </Badge>
+                          </span>
+                        )}
                       </td>
                       <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
                         {usd(a.netAllocatedUsdCents)}
@@ -1450,7 +1481,7 @@ export default function DashboardPage() {
                         {payoutProgress[a.id] && (
                           <span className="ml-2 text-xs text-zinc-400">{payoutProgress[a.id]}</span>
                         )}
-                        {a.payoutStatus !== "PAID" && (
+                        {a.payoutStatus !== "PAID" && a.worker && (
                           <select
                             aria-label={
                               locale === "ko" ? "예정 정산 경로" : "Planned settlement route"
@@ -1471,7 +1502,14 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className={tableCellClass}>
-                        {a.payoutStatus !== "PAID" && (
+                        {a.payoutStatus !== "PAID" && !a.worker && (
+                          <span className="text-xs leading-relaxed text-zinc-500">
+                            {locale === "ko"
+                              ? "직원이 계정을 연결하면 지급할 수 있습니다."
+                              : "Payable once the worker connects an account."}
+                          </span>
+                        )}
+                        {a.payoutStatus !== "PAID" && a.worker && (
                           <span className="flex gap-2">
                             <Button
                               size="sm"

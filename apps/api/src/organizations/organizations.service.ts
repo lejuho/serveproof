@@ -387,7 +387,9 @@ export class OrganizationsService {
     const cash = summarize(["CASH_RETAINED", "CASH_DRAWER"]);
     const payroll = summarize(["PAYROLL"]);
     const usdc = summarize(["USDC"]);
-    const unassigned = allocations.filter((a) => !railFor(a));
+    // 보류(연결 대기) 몫은 미배정 레일과 구분해서 집계한다
+    const heldAllocations = allocations.filter((a) => !a.workerId);
+    const unassigned = allocations.filter((a) => a.workerId && !railFor(a));
 
     let treasury: {
       status: "AVAILABLE" | "UNAVAILABLE" | "MISCONFIGURED";
@@ -475,12 +477,19 @@ export class OrganizationsService {
       usdc: {
         ...usdc,
         missingWalletCount: allocations.filter(
-          (a) => railFor(a) === "USDC" && a.worker.defaultWallet?.status !== "ACTIVE",
+          (a) =>
+            a.workerId != null &&
+            railFor(a) === "USDC" &&
+            a.worker?.defaultWallet?.status !== "ACTIVE",
         ).length,
       },
       unassigned: {
         workerCount: unassigned.length,
         totalUsdCents: unassigned.reduce((sum, a) => sum + a.netAllocatedUsdCents, 0),
+      },
+      held: {
+        workerCount: heldAllocations.length,
+        totalUsdCents: heldAllocations.reduce((sum, a) => sum + a.netAllocatedUsdCents, 0),
       },
       treasury,
       testAssetWarning: "Devnet tUSDC is a test asset with no monetary value.",
@@ -503,9 +512,11 @@ export class OrganizationsService {
     );
     const rows = payrollAllocations.map((allocation) => [
       businessDate,
-      allocation.worker.user.displayName,
-      allocation.worker.user.email,
-      allocation.worker.externalAccounts.find((a) => a.venueId === venueId)?.externalWorkerId ?? "",
+      allocation.worker?.user.displayName ?? "",
+      allocation.worker?.user.email ?? "",
+      allocation.worker?.externalAccounts.find((a) => a.venueId === venueId)?.externalWorkerId ??
+        allocation.externalWorkerId ??
+        "",
       (allocation.netAllocatedUsdCents / 100).toFixed(2),
       allocation.id,
       allocation.batch.allocationHash ?? "",

@@ -491,7 +491,12 @@ enum WorkerAllocationPayoutStatus {
 model WorkerAllocation {
   id                     String                       @id @default(uuid())
   batchId                String
-  workerId               String
+  /// null → held share: the external worker has not connected an account yet.
+  /// provider + externalWorkerId identify the future owner; the row attaches
+  /// to the worker when the mapping is confirmed (no clawback ever needed).
+  workerId               String?
+  provider               String?
+  externalWorkerId       String?
   grossTipUsdCents       Int                          @default(0)
   pooledTipUsdCents      Int                          @default(0)
   tipOutGivenUsdCents    Int                          @default(0)
@@ -502,11 +507,13 @@ model WorkerAllocation {
   payoutStatus           WorkerAllocationPayoutStatus @default(UNPAID)
 
   batch   AllocationBatch @relation(fields: [batchId], references: [id])
-  worker  Worker          @relation(fields: [workerId], references: [id])
+  worker  Worker?         @relation(fields: [workerId], references: [id])
   payouts Payout[]
 
   @@unique([batchId, workerId])
+  @@unique([batchId, provider, externalWorkerId])
   @@index([workerId])
+  @@index([provider, externalWorkerId])
 }
 
 // ── Settlement ──────────────────────────────────────────────────────────────

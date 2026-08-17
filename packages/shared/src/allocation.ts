@@ -22,6 +22,7 @@ export interface AllocationShiftInput {
   /** null when the external worker is not yet mapped (spec §11.1 check) */
   workerId: string | null;
   externalWorkerId: string;
+  provider: string;
   role: string;
   workedMinutes: number;
   shiftStatus: "IN_PROGRESS" | "COMPLETED" | "APPROVED" | "VOIDED";
@@ -50,7 +51,10 @@ export interface AllocationIssue {
 }
 
 export interface WorkerAllocationResult {
-  workerId: string;
+  /** null → held share for a not-yet-connected external worker */
+  workerId: string | null;
+  provider: string | null;
+  externalWorkerId: string | null;
   score: number;
   pooledTipUsdCents: number;
   netAllocatedUsdCents: number;
@@ -94,24 +98,38 @@ export function computeAllocationBatch(
   }
 
   // ── Eligible shifts and scores ──────────────────────────────
-  const scoreByWorker = new Map<string, number>();
+  // Unmapped workers still get their exact share (the split depends only on
+  // minutes and role, never on account connection); the share is emitted as a
+  // held allocation keyed by provider + external ID, so nothing blocks and no
+  // clawback is ever needed when they connect later.
+  interface RecipientIdentity {
+    workerId: string | null;
+    provider: string | null;
+    externalWorkerId: string | null;
+  }
+  const scoreByKey = new Map<string, number>();
+  const identityByKey = new Map<string, RecipientIdentity>();
   for (const shift of shifts) {
     if (shift.shiftStatus !== "COMPLETED" && shift.shiftStatus !== "APPROVED") continue;
     if (policy.excludedRoles.includes(shift.role)) continue;
 
+    const shiftLabel = shift.workerId ?? `${shift.provider}:${shift.externalWorkerId}`;
     if (shift.workerId === null) {
       issues.push({
         code: "UNMAPPED_WORKER",
-        blocking: true,
-        detail: { externalWorkerId: shift.externalWorkerId, role: shift.role },
+        blocking: false,
+        detail: {
+          externalWorkerId: shift.externalWorkerId,
+          provider: shift.provider,
+          role: shift.role,
+        },
       });
-      continue;
     }
     if (shift.workedMinutes <= 0) {
       issues.push({
         code: "NON_POSITIVE_MINUTES",
         blocking: true,
-        detail: { workerId: shift.workerId, workedMinutes: shift.workedMinutes },
+        detail: { workerId: shiftLabel, workedMinutes: shift.workedMinutes },
       });
       continue;
     }
@@ -120,15 +138,24 @@ export function computeAllocationBatch(
       issues.push({
         code: "UNKNOWN_ROLE",
         blocking: true,
-        detail: { workerId: shift.workerId, role: shift.role },
+        detail: { workerId: shiftLabel, role: shift.role },
       });
       continue;
     }
     const score = shift.workedMinutes * weight;
-    scoreByWorker.set(shift.workerId, (scoreByWorker.get(shift.workerId) ?? 0) + score);
+    const key = shift.workerId
+      ? `worker:${shift.workerId}`
+      : `held:${shift.provider}:${shift.externalWorkerId}`;
+    scoreByKey.set(key, (scoreByKey.get(key) ?? 0) + score);
+    identityByKey.set(
+      key,
+      shift.workerId
+        ? { workerId: shift.workerId, provider: null, externalWorkerId: null }
+        : { workerId: null, provider: shift.provider, externalWorkerId: shift.externalWorkerId },
+    );
   }
 
-  const totalScore = [...scoreByWorker.values()].reduce((a, b) => a + b, 0);
+  const totalScore = [...scoreByKey.values()].reduce((a, b) => a + b, 0);
 
   if (poolUsdCents === 0) {
     issues.push({ code: "EMPTY_POOL", blocking: false, detail: {} });
@@ -139,15 +166,15 @@ export function computeAllocationBatch(
   }
 
   // ── Largest-remainder split, exact to the cent ──────────────
-  const entries = [...scoreByWorker.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const raw = entries.map(([workerId, score]) => {
+  const entries = [...scoreByKey.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const raw = entries.map(([key, score]) => {
     const exact = (poolUsdCents * score) / totalScore;
-    return { workerId, score, floor: Math.floor(exact), remainder: exact - Math.floor(exact) };
+    return { key, score, floor: Math.floor(exact), remainder: exact - Math.floor(exact) };
   });
 
   let leftover = poolUsdCents - raw.reduce((sum, r) => sum + r.floor, 0);
   const byRemainder = [...raw].sort(
-    (a, b) => b.remainder - a.remainder || a.workerId.localeCompare(b.workerId),
+    (a, b) => b.remainder - a.remainder || a.key.localeCompare(b.key),
   );
   for (const r of byRemainder) {
     if (leftover <= 0) break;
@@ -155,12 +182,17 @@ export function computeAllocationBatch(
     leftover -= 1;
   }
 
-  const allocations: WorkerAllocationResult[] = raw.map((r) => ({
-    workerId: r.workerId,
-    score: r.score,
-    pooledTipUsdCents: r.floor,
-    netAllocatedUsdCents: r.floor, // tip-out rules (§10.3) adjust this when implemented
-  }));
+  const allocations: WorkerAllocationResult[] = raw.map((r) => {
+    const identity = identityByKey.get(r.key)!;
+    return {
+      workerId: identity.workerId,
+      provider: identity.provider,
+      externalWorkerId: identity.externalWorkerId,
+      score: r.score,
+      pooledTipUsdCents: r.floor,
+      netAllocatedUsdCents: r.floor, // tip-out rules (§10.3) adjust this when implemented
+    };
+  });
 
   const total = allocations.reduce((sum, a) => sum + a.pooledTipUsdCents, 0);
   if (total !== poolUsdCents) {

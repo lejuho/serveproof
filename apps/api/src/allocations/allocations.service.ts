@@ -91,6 +91,7 @@ export class AllocationsService {
     const engineShifts: AllocationShiftInput[] = shifts.map((s) => ({
       workerId: s.mappedWorkerId,
       externalWorkerId: s.externalWorkerId,
+      provider: s.provider,
       role: s.role,
       workedMinutes: s.workedMinutes,
       shiftStatus: s.shiftStatus,
@@ -174,9 +175,11 @@ export class AllocationsService {
           data: result.allocations.map((a) => ({
             batchId: saved.id,
             workerId: a.workerId,
+            provider: a.provider,
+            externalWorkerId: a.externalWorkerId,
             pooledTipUsdCents: a.pooledTipUsdCents,
             netAllocatedUsdCents: a.netAllocatedUsdCents,
-            plannedPayoutRail: plannedRailByWorker.get(a.workerId) ?? null,
+            plannedPayoutRail: a.workerId ? (plannedRailByWorker.get(a.workerId) ?? null) : null,
           })),
         });
       }
