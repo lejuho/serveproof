@@ -110,7 +110,13 @@ interface Alert {
 interface Me {
   id: string;
   user: { email: string; displayName: string };
-  wallets: { id: string; address: string; isDefault: boolean; status: string }[];
+  wallets: {
+    id: string;
+    address: string;
+    isDefault: boolean;
+    status: string;
+    linkedAt: string;
+  }[];
 }
 interface WorkerOverview {
   me: Me;
@@ -193,6 +199,7 @@ export default function MyIncomePage() {
   const [workDataLoaded, setWorkDataLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedAlertId, setCopiedAlertId] = useState<string | null>(null);
+  const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   const [workerWorkspace, setWorkerWorkspace] = useState<"work" | "income">("income");
@@ -451,6 +458,12 @@ export default function MyIncomePage() {
     window.setTimeout(() => setCopied(false), 2000);
   }
 
+  async function copyWalletAddress(walletId: string, address: string) {
+    await navigator.clipboard.writeText(address);
+    setCopiedWalletId(walletId);
+    window.setTimeout(() => setCopiedWalletId(null), 2000);
+  }
+
   function scrollToIncomeTarget(targetId: string) {
     document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -617,7 +630,7 @@ export default function MyIncomePage() {
           )}
           <a
             href="/login?switch=1"
-            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+            className="text-sm font-medium text-zinc-500 hover:text-zinc-700"
           >
             {t("auth.switch")}
           </a>
@@ -626,7 +639,7 @@ export default function MyIncomePage() {
               await logoutSession();
               router.push("/login?switch=1");
             }}
-            className="text-sm font-medium text-zinc-400 hover:text-zinc-600"
+            className="text-sm font-medium text-zinc-500 hover:text-zinc-700"
           >
             {t("logout")}
           </button>
@@ -729,7 +742,11 @@ export default function MyIncomePage() {
                 label={t("me.stat.allocated")}
                 value={usd(summary.totals.allocatedUsdCents)}
               />
-              <StatCard label={t("me.stat.paid")} value={usd(summary.totals.paidUsdCents)} />
+              <StatCard
+                label={t("me.stat.paid")}
+                value={usd(summary.totals.paidUsdCents)}
+                valueClass="text-emerald-700"
+              />
               <StatCard label={t("me.stat.avg")} value={usd(summary.avgMonthlyAllocatedUsdCents)} />
               <StatCard
                 label={t("me.stat.payers")}
@@ -743,6 +760,8 @@ export default function MyIncomePage() {
             <LoadingState compact title={t("loading.incomeDetails")} />
           )}
 
+          <div id="card-wallet" className="scroll-mt-6" />
+          <div className="grid items-start gap-6 lg:grid-cols-2">
           {taxReadiness && (
             <Card
               title={
@@ -795,7 +814,7 @@ export default function MyIncomePage() {
                     : `${usd(taxReadiness.devnetTestUsdCents)} of Devnet tUSDC is excluded because it has no monetary value.`}
                 </Callout>
               )}
-              <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+              <p className="mt-3 text-xs leading-relaxed text-zinc-500">
                 {locale === "ko"
                   ? "세무 자문이나 실제 세액 계산이 아닙니다. 개인 상황은 세무 전문가에게 확인하세요."
                   : taxReadiness.disclaimer}{" "}
@@ -819,10 +838,55 @@ export default function MyIncomePage() {
               </p>
             </Card>
           )}
+          {me && (
+            <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
+              {me.wallets.length === 0 ? (
+                <p className="text-sm text-zinc-500">{t("me.wallet.empty")}</p>
+              ) : (
+                <ul className="flex flex-col gap-2.5">
+                  {me.wallets.map((wallet) => (
+                    <li
+                      key={wallet.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-zinc-200 bg-zinc-50/70 px-3.5 py-2.5"
+                    >
+                      <code
+                        title={wallet.address}
+                        className="text-[15px] font-medium text-zinc-800"
+                      >
+                        {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
+                      </code>
+                      {wallet.isDefault && <Badge tone="CONFIRMED">{t("me.wallet.default")}</Badge>}
+                      {wallet.linkedAt && (
+                        <span className="text-xs text-zinc-500">
+                          {t("me.wallet.linkedAt")} {wallet.linkedAt.slice(0, 10)}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="ml-auto"
+                        onClick={() => copyWalletAddress(wallet.id, wallet.address)}
+                      >
+                        {copiedWalletId === wallet.id
+                          ? t("me.wallet.copied")
+                          : t("me.wallet.copy")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-4">
+                <Button variant="violet" onClick={registerWallet} disabled={busy}>
+                  {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
+                </Button>
+              </div>
+            </Card>
+          )}
+          </div>
 
           <Card title={t("me.alerts.title")} description={t("me.alerts.desc")}>
             {alerts.length === 0 ? (
-              <p className="text-sm text-zinc-400">{t("me.alerts.empty")}</p>
+              <p className="text-sm text-zinc-500">{t("me.alerts.empty")}</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {alerts.map((alert) => {
@@ -918,7 +982,17 @@ export default function MyIncomePage() {
                         {usd(entry.allocatedUsdCents)}
                       </td>
                       <td className={`${tableCellClass} text-right font-semibold tabular-nums`}>
-                        {usd(entry.paidUsdCents)}
+                        <span
+                          className={
+                            entry.allocatedUsdCents > entry.paidUsdCents
+                              ? "text-amber-700"
+                              : entry.paidUsdCents > 0
+                                ? "text-emerald-700"
+                                : undefined
+                          }
+                        >
+                          {usd(entry.paidUsdCents)}
+                        </span>
                       </td>
                       <td className={`${tableCellClass} text-right tabular-nums`}>
                         {usd(entry.payrollReportedUsdCents)}
@@ -1254,7 +1328,7 @@ export default function MyIncomePage() {
                   >
                     {t("me.share.recipientLabel")}
                     {accessMode === "LINK" && (
-                      <span className="ml-1 font-normal text-zinc-400">{t("optional")}</span>
+                      <span className="ml-1 font-normal text-zinc-500">{t("optional")}</span>
                     )}
                   </label>
                   <input
@@ -1304,7 +1378,7 @@ export default function MyIncomePage() {
               </div>
 
               <aside className="h-fit rounded-2xl border border-zinc-200 bg-zinc-50 p-5 lg:sticky lg:top-24">
-                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                   {t("me.share.review")}
                 </p>
                 <dl className="mt-4 space-y-4 text-sm">
@@ -1449,7 +1523,7 @@ export default function MyIncomePage() {
                             : t("me.share.accessLinkShort")}
                         </Badge>
                         <span className="text-zinc-700">{grant.purpose}</span>
-                        <span className="text-sm text-zinc-400">
+                        <span className="text-sm text-zinc-500">
                           {t("me.share.expires")} {grant.expiresAt.slice(0, 10)}
                         </span>
                         {grant.revokedAt && <Badge tone="FAILED">{t("me.share.revoked")}</Badge>}
@@ -1486,14 +1560,14 @@ export default function MyIncomePage() {
                         {t("me.share.accessHistory")} · {grant.accesses.length}
                       </summary>
                       {grant.accesses.length === 0 ? (
-                        <p className="mt-2 text-zinc-400">{t("me.share.noAccess")}</p>
+                        <p className="mt-2 text-zinc-500">{t("me.share.noAccess")}</p>
                       ) : (
                         <ul className="mt-2 space-y-1.5">
                           {grant.accesses.map((access) => (
                             <li key={access.id} className="flex flex-wrap gap-x-2">
                               <span>{new Date(access.accessedAt).toLocaleString()}</span>
                               <span>{access.ipMasked ?? t("me.share.unknownIp")}</span>
-                              <span className="max-w-full truncate text-zinc-400">
+                              <span className="max-w-full truncate text-zinc-500">
                                 {access.userAgent ?? "—"}
                               </span>
                             </li>
@@ -1507,30 +1581,6 @@ export default function MyIncomePage() {
             )}
           </Card>
 
-          <div id="card-wallet" className="scroll-mt-6" />
-          {me && (
-            <Card title={t("me.wallet.title")} description={t("me.wallet.desc")}>
-              {me.wallets.length === 0 ? (
-                <p className="text-sm text-zinc-400">{t("me.wallet.empty")}</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {me.wallets.map((wallet) => (
-                    <li key={wallet.id} className="flex items-center gap-3">
-                      <code className="rounded-lg bg-zinc-100 px-2.5 py-1 text-sm text-zinc-600">
-                        {wallet.address.slice(0, 8)}…{wallet.address.slice(-6)}
-                      </code>
-                      {wallet.isDefault && <Badge tone="CONFIRMED">{t("me.wallet.default")}</Badge>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-4">
-                <Button variant="violet" onClick={registerWallet} disabled={busy}>
-                  {me.wallets.length === 0 ? t("me.wallet.connect") : t("me.wallet.connectMore")}
-                </Button>
-              </div>
-            </Card>
-          )}
         </>
       )}
     </AppShell>

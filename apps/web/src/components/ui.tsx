@@ -12,7 +12,7 @@ export function LanguageToggle() {
       onClick={() => setLocale(value)}
       aria-pressed={locale === value}
       className={`rounded-md px-2 py-1 text-xs font-bold transition-colors ${
-        locale === value ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
+        locale === value ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
       }`}
     >
       {label}
@@ -130,7 +130,7 @@ export function LoadingState({
       <p className={`${compact ? "mt-3 text-sm" : "mt-4 text-[15px]"} font-semibold text-zinc-700`}>
         {title}
       </p>
-      {description && <p className="mt-1.5 text-sm text-zinc-400">{description}</p>}
+      {description && <p className="mt-1.5 text-sm text-zinc-500">{description}</p>}
     </div>
   );
 
@@ -253,18 +253,20 @@ export function StatCard({
   label,
   value,
   hint,
+  valueClass = "text-zinc-900",
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  valueClass?: string;
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <p className="text-[13px] font-medium text-zinc-500">{label}</p>
-      <p className="mt-1.5 text-[26px] font-bold tracking-tight text-zinc-900 tabular-nums">
+      <p className={`mt-1.5 text-[26px] font-bold tracking-tight tabular-nums ${valueClass}`}>
         {value}
       </p>
-      {hint && <p className="mt-0.5 text-xs text-zinc-400">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
     </div>
   );
 }
@@ -292,5 +294,5 @@ export function Callout({
 }
 
 export const tableHeadClass =
-  "border-b border-zinc-200 pb-2.5 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-400";
+  "border-b border-zinc-200 pb-2.5 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500";
 export const tableCellClass = "border-b border-zinc-100 py-3 pr-3 text-[15px] text-zinc-700";

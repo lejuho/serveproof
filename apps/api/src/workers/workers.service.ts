@@ -41,7 +41,7 @@ export class WorkersService {
         id: true,
         user: { select: { email: true, displayName: true } },
         wallets: {
-          select: { id: true, address: true, isDefault: true, status: true },
+          select: { id: true, address: true, isDefault: true, status: true, linkedAt: true },
           orderBy: { linkedAt: "asc" },
         },
       },

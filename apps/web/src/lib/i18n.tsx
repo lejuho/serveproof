@@ -494,6 +494,9 @@ const dict: Record<string, { ko: string; en: string }> = {
   },
   "me.wallet.empty": { ko: "연결된 지갑이 없습니다.", en: "No wallets connected." },
   "me.wallet.default": { ko: "기본", en: "Default" },
+  "me.wallet.linkedAt": { ko: "등록", en: "Linked" },
+  "me.wallet.copy": { ko: "주소 복사", en: "Copy address" },
+  "me.wallet.copied": { ko: "복사됨", en: "Copied" },
   "alert.ALLOCATION_GAP": {
     ko: "배분 내역을 확인해 주세요. 근무 기록은 있지만 배분 내역이 없습니다.",
     en: "Review the allocation. A shift is recorded, but no allocation was found.",
