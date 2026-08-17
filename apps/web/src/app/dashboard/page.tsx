@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   api,
   ApiError,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api";
 import { connectWallet, signTransactionBase64 } from "@/lib/wallet";
 import { useI18n } from "@/lib/i18n";
+import { apiStaleTime, fetchApiQuery, invalidateApiQueries } from "@/lib/query";
 import {
   AppShell,
   Badge,
@@ -189,6 +191,7 @@ export default function DashboardPage() {
     }
   };
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [venueId, setVenueId] = useState<string>("");
   const [csvText, setCsvText] = useState("");
@@ -250,7 +253,7 @@ export default function DashboardPage() {
     }
     setAvailableModes(getCurrentSession()?.modes ?? []);
     void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
-    api<Organization[]>("/organizations/mine")
+    fetchApiQuery<Organization[]>(queryClient, "/organizations/mine", apiStaleTime.organization)
       .then(async (data) => {
         setAvailableModes(getCurrentSession()?.modes ?? []);
         setOrgs(data);
@@ -260,13 +263,31 @@ export default function DashboardPage() {
         setVenueId(firstVenue.id);
         const [unmappedData, actionData, connectionsData, closeData, venueData] = await Promise.all(
           [
-            api<UnmappedResponse>(`/venues/${firstVenue.id}/unmapped-workers`),
-            api<typeof actionItems>(`/venues/${firstVenue.id}/action-items`),
-            api<WorkerConnectionsResponse>(`/venues/${firstVenue.id}/worker-connections`),
-            api<SettlementClose>(
-              `/venues/${firstVenue.id}/settlement-close?businessDate=${encodeURIComponent(DEFAULT_BUSINESS_DATE)}`,
+            fetchApiQuery<UnmappedResponse>(
+              queryClient,
+              `/venues/${firstVenue.id}/unmapped-workers`,
+              apiStaleTime.connections,
             ),
-            api<{ payoutSignerWallet: string | null }>(`/venues/${firstVenue.id}`),
+            fetchApiQuery<typeof actionItems>(
+              queryClient,
+              `/venues/${firstVenue.id}/action-items`,
+              apiStaleTime.actionItems,
+            ),
+            fetchApiQuery<WorkerConnectionsResponse>(
+              queryClient,
+              `/venues/${firstVenue.id}/worker-connections`,
+              apiStaleTime.connections,
+            ),
+            fetchApiQuery<SettlementClose>(
+              queryClient,
+              `/venues/${firstVenue.id}/settlement-close?businessDate=${encodeURIComponent(DEFAULT_BUSINESS_DATE)}`,
+              apiStaleTime.settlement,
+            ),
+            fetchApiQuery<{ payoutSignerWallet: string | null }>(
+              queryClient,
+              `/venues/${firstVenue.id}`,
+              apiStaleTime.organization,
+            ),
           ],
         );
         setUnmapped(unmappedData);
@@ -277,41 +298,81 @@ export default function DashboardPage() {
       })
       .catch(guard)
       .finally(() => setInitialLoading(false));
-  }, [router, guard]);
+  }, [router, guard, queryClient]);
 
-  const refreshUnmapped = useCallback(() => {
+  const loadVenueConnections = useCallback(() => {
     if (!venueId) return;
-    api<UnmappedResponse>(`/venues/${venueId}/unmapped-workers`).then(setUnmapped).catch(guard);
-    api<typeof actionItems>(`/venues/${venueId}/action-items`).then(setActionItems).catch(guard);
-    api<WorkerConnectionsResponse>(`/venues/${venueId}/worker-connections`)
+    fetchApiQuery<UnmappedResponse>(
+      queryClient,
+      `/venues/${venueId}/unmapped-workers`,
+      apiStaleTime.connections,
+    )
+      .then(setUnmapped)
+      .catch(guard);
+    fetchApiQuery<typeof actionItems>(
+      queryClient,
+      `/venues/${venueId}/action-items`,
+      apiStaleTime.actionItems,
+    )
+      .then(setActionItems)
+      .catch(guard);
+    fetchApiQuery<WorkerConnectionsResponse>(
+      queryClient,
+      `/venues/${venueId}/worker-connections`,
+      apiStaleTime.connections,
+    )
       .then(setWorkerConnections)
       .catch(guard);
-  }, [venueId, guard]);
+  }, [venueId, guard, queryClient]);
 
-  const refreshSettlementClose = useCallback(() => {
+  const refreshUnmapped = useCallback(async () => {
+    if (!venueId) return;
+    await invalidateApiQueries(queryClient, [
+      `/venues/${venueId}/unmapped-workers`,
+      `/venues/${venueId}/action-items`,
+      `/venues/${venueId}/worker-connections`,
+    ]);
+    loadVenueConnections();
+  }, [venueId, queryClient, loadVenueConnections]);
+
+  const loadSettlementClose = useCallback(() => {
     if (!venueId || !businessDate) return;
-    api<SettlementClose>(
+    fetchApiQuery<SettlementClose>(
+      queryClient,
       `/venues/${venueId}/settlement-close?businessDate=${encodeURIComponent(businessDate)}`,
+      apiStaleTime.settlement,
     )
       .then(setSettlementClose)
       .catch(guard);
-  }, [venueId, businessDate, guard]);
+  }, [venueId, businessDate, guard, queryClient]);
+
+  const refreshSettlementClose = useCallback(async () => {
+    if (!venueId || !businessDate) return;
+    await invalidateApiQueries(queryClient, [
+      `/venues/${venueId}/settlement-close?businessDate=${encodeURIComponent(businessDate)}`,
+    ]);
+    loadSettlementClose();
+  }, [venueId, businessDate, queryClient, loadSettlementClose]);
 
   useEffect(() => {
-    refreshSettlementClose();
-  }, [refreshSettlementClose]);
+    loadSettlementClose();
+  }, [loadSettlementClose]);
 
   useEffect(() => {
-    refreshUnmapped();
+    loadVenueConnections();
     setBatch(null);
     setImportResult(null);
     setRebuildResult(null);
     if (venueId) {
-      api<{ payoutSignerWallet: string | null }>(`/venues/${venueId}`)
+      fetchApiQuery<{ payoutSignerWallet: string | null }>(
+        queryClient,
+        `/venues/${venueId}`,
+        apiStaleTime.organization,
+      )
         .then((venue) => setVenueSigner(venue.payoutSignerWallet))
         .catch(guard);
     }
-  }, [venueId, refreshUnmapped, guard]);
+  }, [venueId, loadVenueConnections, guard, queryClient]);
 
   const connect = () =>
     run(async () => {

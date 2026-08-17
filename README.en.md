@@ -43,6 +43,8 @@ The UI separates venue work into `Staffing / Settlement & income` and worker wor
 
 The worker screen initially loads `account, income summary, alerts, and the latest 25 income entries` through one overview API. Tax/proof history loads after the first screen, while venue connections and shifts load only when the `Work` tab opens. The income timeline uses cursor pagination to append 25 older entries at a time.
 
+Authenticated GET responses use a user-scoped React Query memory cache to deduplicate reads. Organization and venue lists stay fresh for 5 minutes, overview and connections for 30 seconds, action items for 10 seconds, and settlement summaries for 5 seconds. Approval, payout, rebuild, and worker-connection mutations immediately invalidate related keys. Payout polling and shared server/CDN caching remain uncached.
+
 New income proofs default to `recipient email OTP`. The recipient must pass a five-minute OTP and receives an access session lasting at most 15 minutes. Workers can explicitly opt into an unauthenticated public link. Expired, revoked, or corrected links return report metadata but never the income snapshot. Existing grants remain public-link mode for compatibility.
 
 For detailed requirements and current progress, see the [implementation specification](ServeProof_MVP_Implementation_Spec_v2.md), [implementation plan](IMPLEMENTATION_PLAN.md), and [architecture documentation](ARCHITECTURE.md).

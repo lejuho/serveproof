@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import * as QRCode from "qrcode";
 import {
   api,
@@ -14,6 +15,7 @@ import {
   type AppMode,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { apiStaleTime, fetchApiQuery, invalidateApiQueries } from "@/lib/query";
 import { connectWallet } from "@/lib/wallet";
 import {
   AppShell,
@@ -156,6 +158,7 @@ export default function MyIncomePage() {
     return labels[value] ?? value;
   };
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [me, setMe] = useState<Me | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
@@ -215,7 +218,7 @@ export default function MyIncomePage() {
     }
     setAvailableModes(getCurrentSession()?.modes ?? []);
     void syncCurrentSession().then((session) => setAvailableModes(session?.modes ?? []));
-    api<WorkerOverview>("/workers/me/overview")
+    fetchApiQuery<WorkerOverview>(queryClient, "/workers/me/overview", apiStaleTime.overview)
       .then((overview) => {
         setAvailableModes(getCurrentSession()?.modes ?? []);
         setMe(overview.me);
@@ -226,13 +229,16 @@ export default function MyIncomePage() {
       })
       .catch(guard)
       .finally(() => setInitialLoading(false));
-  }, [router, guard]);
+  }, [router, guard, queryClient]);
 
   useEffect(() => {
     if (initialLoading || workerWorkspace !== "income" || incomeSecondaryRequested.current) return;
     incomeSecondaryRequested.current = true;
     setIncomeSecondaryLoading(true);
-    Promise.all([api<Grant[]>("/disclosures"), api<TaxReadiness>("/workers/me/tax-readiness")])
+    Promise.all([
+      fetchApiQuery<Grant[]>(queryClient, "/disclosures", apiStaleTime.overview),
+      fetchApiQuery<TaxReadiness>(queryClient, "/workers/me/tax-readiness", apiStaleTime.overview),
+    ])
       .then(([grantData, taxData]) => {
         setGrants(grantData);
         setTaxReadiness(taxData);
@@ -242,24 +248,31 @@ export default function MyIncomePage() {
         setIncomeSecondaryLoaded(true);
         setIncomeSecondaryLoading(false);
       });
-  }, [guard, initialLoading, workerWorkspace]);
+  }, [guard, initialLoading, workerWorkspace, queryClient]);
 
   useEffect(() => {
     if (initialLoading || workerWorkspace !== "work" || workDataRequested.current) return;
     workDataRequested.current = true;
     setWorkDataLoading(true);
-    api<VenueConnection[]>("/workers/me/venue-connections")
+    fetchApiQuery<VenueConnection[]>(
+      queryClient,
+      "/workers/me/venue-connections",
+      apiStaleTime.connections,
+    )
       .then(setVenueConnections)
       .catch(guard)
       .finally(() => {
         setWorkDataLoaded(true);
         setWorkDataLoading(false);
       });
-  }, [guard, initialLoading, workerWorkspace]);
+  }, [guard, initialLoading, workerWorkspace, queryClient]);
 
-  const refreshGrants = useCallback(() => {
-    api<Grant[]>("/disclosures").then(setGrants).catch(guard);
-  }, [guard]);
+  const refreshGrants = useCallback(async () => {
+    await invalidateApiQueries(queryClient, ["/disclosures"]);
+    fetchApiQuery<Grant[]>(queryClient, "/disclosures", apiStaleTime.overview)
+      .then(setGrants)
+      .catch(guard);
+  }, [guard, queryClient]);
 
   const respondToMapping = async (mappingId: string, decision: "ACCEPT" | "REJECT") => {
     setRespondingMappingId(mappingId);
@@ -270,7 +283,17 @@ export default function MyIncomePage() {
         method: "PATCH",
         body: { decision },
       });
-      setVenueConnections(await api<VenueConnection[]>("/workers/me/venue-connections"));
+      await invalidateApiQueries(queryClient, [
+        "/workers/me/venue-connections",
+        "/workers/me/overview",
+      ]);
+      setVenueConnections(
+        await fetchApiQuery<VenueConnection[]>(
+          queryClient,
+          "/workers/me/venue-connections",
+          apiStaleTime.connections,
+        ),
+      );
       setConnectionMessage(
         decision === "ACCEPT"
           ? locale === "ko"
@@ -291,9 +314,8 @@ export default function MyIncomePage() {
     if (!timelineCursor || timelineLoading) return;
     setTimelineLoading(true);
     try {
-      const page = await api<TimelinePage>(
-        `/workers/me/income-timeline?limit=25&cursor=${encodeURIComponent(timelineCursor)}`,
-      );
+      const path = `/workers/me/income-timeline?limit=25&cursor=${encodeURIComponent(timelineCursor)}`;
+      const page = await fetchApiQuery<TimelinePage>(queryClient, path, apiStaleTime.overview);
       setTimeline((current) => [
         ...current,
         ...page.items.filter((entry) => !current.some((existing) => existing.id === entry.id)),
@@ -372,8 +394,18 @@ export default function MyIncomePage() {
     try {
       const address = await connectWallet();
       await api("/workers/me/wallets", { method: "POST", body: { address } });
+      await invalidateApiQueries(queryClient, [
+        "/workers/me/overview",
+        "/workers/me/venue-connections",
+      ]);
       setMe(await api<Me>("/workers/me"));
-      setVenueConnections(await api<VenueConnection[]>("/workers/me/venue-connections"));
+      setVenueConnections(
+        await fetchApiQuery<VenueConnection[]>(
+          queryClient,
+          "/workers/me/venue-connections",
+          apiStaleTime.connections,
+        ),
+      );
     } catch (e) {
       guard(e);
     } finally {
