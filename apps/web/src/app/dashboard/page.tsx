@@ -75,7 +75,7 @@ interface Allocation {
   externalWorkerId: string | null;
   // null → 보류 배분: 아직 계정을 연결하지 않은 외부 직원의 몫
   worker: { defaultWalletId: string | null; user: { displayName: string } } | null;
-  payouts: {
+  payouts?: {
     rail: string;
     status: string;
     txSignature: string | null;
@@ -1804,7 +1804,7 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className={tableCellClass}>
-                        {a.payoutStatus === "PAID" && a.payouts[0]?.txSignature && (
+                        {a.payoutStatus === "PAID" && a.payouts?.[0]?.txSignature && (
                           <a
                             href={solscanTxUrl(a.payouts[0].txSignature)}
                             target="_blank"
@@ -1815,8 +1815,8 @@ export default function DashboardPage() {
                           </a>
                         )}
                         {a.payoutStatus === "PAID" &&
-                          !a.payouts[0]?.txSignature &&
-                          a.payouts[0]?.externalReference && (
+                          !a.payouts?.[0]?.txSignature &&
+                          a.payouts?.[0]?.externalReference && (
                             <span className="text-xs text-zinc-500">
                               {locale === "ko" ? "참조번호" : "Reference"}:{" "}
                               {a.payouts[0].externalReference}
