@@ -97,6 +97,8 @@ interface Alert {
   type: string;
   detail: Record<string, unknown>;
   createdAt: string;
+  venue?: { id: string; name: string } | null;
+  shift?: { businessDate: string; role: string } | null;
 }
 interface Me {
   id: string;
@@ -167,6 +169,7 @@ export default function MyIncomePage() {
   const [lastReportId, setLastReportId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedAlertId, setCopiedAlertId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableModes, setAvailableModes] = useState<AppMode[]>([]);
   const [workerWorkspace, setWorkerWorkspace] = useState<"work" | "income">("income");
@@ -329,6 +332,33 @@ export default function MyIncomePage() {
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  function scrollToIncomeTarget(targetId: string) {
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function copyAlertInquiry(alert: Alert) {
+    const amount = Number(
+      alert.detail.allocatedUsdCents ??
+        alert.detail.paidUsdCents ??
+        alert.detail.payrollReportedUsdCents ??
+        0,
+    );
+    const context = [alert.venue?.name, alert.shift?.businessDate, alert.shift?.role]
+      .filter(Boolean)
+      .join(" · ");
+    const message =
+      locale === "ko"
+        ? `[ServeProof 확인 요청] ${t(`alert.label.${alert.type}`)}${context ? ` — ${context}` : ""}${amount > 0 ? ` — ${usd(amount)}` : ""}\n${t(`alert.${alert.type}`)}`
+        : `[ServeProof review request] ${t(`alert.label.${alert.type}`)}${context ? ` — ${context}` : ""}${amount > 0 ? ` — ${usd(amount)}` : ""}\n${t(`alert.${alert.type}`)}`;
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopiedAlertId(alert.id);
+      window.setTimeout(() => setCopiedAlertId(null), 2000);
+    } catch {
+      setError(t("me.alerts.copyFailed"));
+    }
   }
 
   const presetOptions = [
@@ -660,19 +690,62 @@ export default function MyIncomePage() {
               <p className="text-sm text-zinc-400">{t("me.alerts.empty")}</p>
             ) : (
               <ul className="flex flex-col gap-2">
-                {alerts.map((alert) => (
-                  <li
-                    key={alert.id}
-                    className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
-                  >
-                    <Badge tone="REVIEW_REQUIRED">{t(`alert.label.${alert.type}`)}</Badge>
-                    <span className="text-sm text-amber-800">{t(`alert.${alert.type}`)}</span>
-                  </li>
-                ))}
+                {alerts.map((alert) => {
+                  const workerCanFixWallet =
+                    alert.type === "PAYOUT_GAP" && me?.wallets.length === 0;
+                  return (
+                    <li
+                      key={alert.id}
+                      className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <Badge tone="REVIEW_REQUIRED">{t(`alert.label.${alert.type}`)}</Badge>
+                        {alert.venue?.name && (
+                          <span className="text-xs font-medium text-amber-700">
+                            {alert.venue.name}
+                            {alert.shift?.businessDate ? ` · ${alert.shift.businessDate}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-sm text-amber-800">{t(`alert.${alert.type}`)}</p>
+                      <div className="mt-3 rounded-lg border border-amber-200/80 bg-white/70 p-3">
+                        <p className="text-xs font-semibold text-zinc-700">
+                          {workerCanFixWallet
+                            ? t("me.alerts.workerAction")
+                            : t("me.alerts.venueAction")}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {workerCanFixWallet && (
+                            <Button size="sm" onClick={() => scrollToIncomeTarget("card-wallet")}>
+                              {t("me.alerts.checkWallet")}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => scrollToIncomeTarget("income-timeline")}
+                          >
+                            {t("me.alerts.viewIncome")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => copyAlertInquiry(alert)}
+                          >
+                            {copiedAlertId === alert.id
+                              ? t("me.alerts.inquiryCopied")
+                              : t("me.alerts.copyInquiry")}
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>
 
+          <div id="income-timeline" className="scroll-mt-6" />
           <Card title={t("me.timeline.title")} description={t("me.timeline.desc")}>
             <div className="overflow-x-auto">
               <table className="w-full">

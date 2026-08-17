@@ -25,6 +25,7 @@ ServeProof는 팁 기반 노동자의 소득이 어떻게 발생하고, 배분�
 - CSV 및 Square Sandbox의 Payment, Order, Timecard, 현금 팁 수집
 - 연결된 사업장·노동자 네트워크에서 오픈 시프트 등록, 초대·수락, 출퇴근, 근무 승인
 - 승인된 staffing 근무를 `ShiftEvidence`로 전환해 기존 팁 배분·지급·소득원장 흐름과 연결
+- USDC 온체인 `FINALIZED` 또는 Legacy 지급 등록 직후 IncomeEntry와 지급 불일치 알림 자동 재계산
 - 외부 직원 ID 매핑, source hash 기반 멱등 evidence 저장
 - 시간·역할 가중 팁 배분, 정책 버전 관리, 검토 및 승인 상태 머신
 - Payroll/legacy 지급 증빙과 Solana Devnet tUSDC 정산

@@ -3,9 +3,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleDestroy,
 } from "@nestjs/common";
+import { rebuildVenueIncome } from "@serveproof/db";
 import { centsToUsdcBaseUnits, encodeBase58, isBlockhashExpired, QUEUES } from "@serveproof/shared";
 import { buildSettlePayoutTx, fetchSettlementRecord, parsePubkey } from "@serveproof/solana";
 import { Connection, Transaction } from "@solana/web3.js";
@@ -17,6 +19,7 @@ const sha256Hex = (s: string) => createHash("sha256").update(s).digest("hex");
 
 @Injectable()
 export class PayoutsService implements OnModuleDestroy {
+  private readonly logger = new Logger(PayoutsService.name);
   private readonly connection = new Connection(
     process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
     "confirmed",
@@ -87,6 +90,7 @@ export class PayoutsService implements OnModuleDestroy {
         });
         if (allocationStatus === "PAID") {
           await this.refreshBatchPaymentStatus(allocation.batchId);
+          await this.rebuildIncomeProjection(allocation.batch.venueId, initiatedByUserId);
         }
       }
       return existing; // idempotent create
@@ -366,11 +370,16 @@ export class PayoutsService implements OnModuleDestroy {
       include: { batch: true },
     });
     if (!allocation) throw new NotFoundException(`Allocation ${allocationId} not found`);
+    if (allocation.payoutStatus === "PAID") {
+      const finalized = await this.prisma.payout.findFirst({
+        where: { allocationId: allocation.id, status: "FINALIZED" },
+      });
+      if (!finalized) throw new ConflictException("Allocation is already paid");
+      await this.rebuildIncomeProjection(allocation.batch.venueId, submittedByUserId);
+      return finalized;
+    }
     if (!["PAYABLE", "PARTIALLY_PAID"].includes(allocation.batch.status)) {
       throw new BadRequestException(`Batch is ${allocation.batch.status}`);
-    }
-    if (allocation.payoutStatus === "PAID") {
-      throw new ConflictException("Allocation is already paid");
     }
 
     const paymentId = allocation.id;
@@ -406,7 +415,19 @@ export class PayoutsService implements OnModuleDestroy {
       }),
     ]);
     await this.refreshBatchPaymentStatus(allocation.batchId);
+    await this.rebuildIncomeProjection(allocation.batch.venueId, submittedByUserId);
     return payout;
+  }
+
+  private async rebuildIncomeProjection(venueId: string, actorUserId?: string) {
+    const result = await rebuildVenueIncome(this.prisma, venueId, actorUserId, "SYSTEM");
+    if (!result) {
+      this.logger.warn(`income projection skipped; venue ${venueId} no longer exists`);
+      return;
+    }
+    this.logger.log(
+      `income projection refreshed after payout: venue=${venueId} entries=${result.entriesUpserted} alerts=${result.alerts}`,
+    );
   }
 
   /** PARTIALLY_PAID / PAID rollup on the batch (spec §25). */

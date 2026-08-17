@@ -8,9 +8,11 @@ import { AuthModule } from "../src/auth/auth.module";
 import { DisclosureModule } from "../src/disclosure/disclosure.module";
 import { EvidenceModule } from "../src/evidence/evidence.module";
 import { HealthModule } from "../src/health/health.module";
+import { IncomeModule } from "../src/income/income.module";
 import { MappingsModule } from "../src/mappings/mappings.module";
 import { OrganizationsModule } from "../src/organizations/organizations.module";
 import { PoliciesModule } from "../src/policies/policies.module";
+import { PayoutsModule } from "../src/payouts/payouts.module";
 import { PrismaModule } from "../src/prisma/prisma.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { ProvidersModule } from "../src/providers/providers.module";
@@ -32,6 +34,8 @@ import { StaffingModule } from "../src/staffing/staffing.module";
     ProvidersModule,
     StaffingModule,
     DisclosureModule,
+    IncomeModule,
+    PayoutsModule,
   ],
 })
 class IntegrationTestModule {}
@@ -425,5 +429,62 @@ describe("ServeProof API integration", () => {
       .set(bearer(owner))
       .send({ venueId, businessDate: "2026-08-05" })
       .expect(409);
+
+    await api().post(`/venues/${venueId}/income/rebuild`).set(bearer(manager)).send({}).expect(201);
+    await api()
+      .get("/workers/me/discrepancies")
+      .set(bearer(worker))
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "PAYOUT_GAP",
+              venue: expect.objectContaining({ name: "Integration Venue" }),
+              shift: expect.objectContaining({ businessDate: "2026-08-05" }),
+            }),
+          ]),
+        ),
+      );
+
+    const legacyPayout = await api()
+      .post("/payouts/legacy-evidence")
+      .set(bearer(manager))
+      .send({
+        allocationId: calculated.body.allocations[0].id,
+        rail: "PAYROLL",
+        externalReference: `payroll-${runId}`,
+      })
+      .expect(201);
+    expect(legacyPayout.body.status).toBe("FINALIZED");
+
+    await api()
+      .get("/workers/me/discrepancies")
+      .set(bearer(worker))
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.find((alert: { type: string }) => alert.type === "PAYOUT_GAP")).toBeUndefined(),
+      );
+    await api()
+      .get("/workers/me/income-timeline")
+      .set(bearer(worker))
+      .expect(200)
+      .expect(({ body }) => {
+        const entry = body.find(
+          (candidate: { businessDate: string }) => candidate.businessDate === "2026-08-05",
+        );
+        expect(entry).toMatchObject({ paidUsdCents: 1000, payoutRail: "PAYROLL" });
+      });
+
+    await api()
+      .post("/payouts/legacy-evidence")
+      .set(bearer(manager))
+      .send({
+        allocationId: calculated.body.allocations[0].id,
+        rail: "PAYROLL",
+        externalReference: `payroll-${runId}`,
+      })
+      .expect(201)
+      .expect(({ body }) => expect(body.id).toBe(legacyPayout.body.id));
   });
 });

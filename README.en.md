@@ -25,6 +25,7 @@ The next sequence is **staging seed → Worker operations check → deployment s
 - Payment, Order, Timecard, and cash-tip ingestion from CSV and Square Sandbox
 - Open-shift creation, invitations, acceptance, clock-in/out, and work approval inside the connected venue-worker network
 - Approved staffing attendance converted into `ShiftEvidence` for the existing allocation, payout, and income-ledger workflows
+- Automatic IncomeEntry and payout-discrepancy rebuild after on-chain USDC `FINALIZED` or legacy payout registration
 - External worker ID mapping and source-hash-based idempotent evidence storage
 - Time- and role-weighted tip allocation, policy versioning, review, and approval state machine
 - Payroll/legacy payment evidence and Solana Devnet tUSDC settlement

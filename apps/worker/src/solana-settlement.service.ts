@@ -4,6 +4,7 @@ import {
   isBlockhashExpired,
   shouldRebroadcastSignedTransaction,
 } from "@serveproof/shared";
+import { rebuildVenueIncome } from "@serveproof/db";
 import { fetchSettlementRecord, getProgram } from "@serveproof/solana";
 import { Connection } from "@solana/web3.js";
 import { PrismaService } from "./prisma.service";
@@ -28,6 +29,9 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     this.startEventIndexer().catch((e) =>
       this.logger.warn(`event indexer not started: ${e.message}`),
+    );
+    this.backfillFinalizedIncomeProjections().catch((error) =>
+      this.logger.warn(`finalized income backfill failed: ${error.message}`),
     );
   }
 
@@ -69,7 +73,11 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
   async processConfirmation(data: { payoutId: string; signature: string }) {
     const payout = await this.prisma.payout.findUnique({ where: { id: data.payoutId } });
     if (!payout) return;
-    if (["FINALIZED", "FAILED"].includes(payout.status)) return;
+    if (payout.status === "FINALIZED") {
+      await this.rebuildIncomeProjection(payout.venueId);
+      return;
+    }
+    if (payout.status === "FAILED") return;
     // Ignore delayed jobs from an older attempt after this payout has been
     // rebuilt with a new blockhash/signature.
     if (payout.txSignature !== data.signature) return;
@@ -130,11 +138,7 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
         // A finalized PDA remains the final authority.
         const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
         if (record) return this.finalizeFromChain(payout.id, payout.allocationId);
-        await this.markFailed(
-          payout.id,
-          payout.allocationId,
-          "transaction_dropped",
-        );
+        await this.markFailed(payout.id, payout.allocationId, "transaction_dropped");
         return;
       }
       if (blockhashExpired) {
@@ -325,7 +329,11 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
 
   private async finalizeFromChain(payoutId: string, allocationId: string, slot?: number) {
     const payout = await this.prisma.payout.findUnique({ where: { id: payoutId } });
-    if (!payout || payout.status === "FINALIZED") return;
+    if (!payout) return;
+    if (payout.status === "FINALIZED") {
+      await this.rebuildIncomeProjection(payout.venueId);
+      return;
+    }
 
     const record = await fetchSettlementRecord(this.connection, payout.paymentId, "finalized");
     if (!record) throw new Error("finalize requested but SettlementRecord not found");
@@ -351,7 +359,33 @@ export class SolanaSettlementService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
     await this.refreshBatchPaymentStatus(allocationId);
+    await this.rebuildIncomeProjection(payout.venueId);
     this.logger.log(`payout ${payoutId} FINALIZED (settlement on-chain verified)`);
+  }
+
+  private async rebuildIncomeProjection(venueId: string) {
+    const result = await rebuildVenueIncome(this.prisma, venueId, undefined, "SYSTEM");
+    if (!result) {
+      this.logger.warn(`income projection skipped; venue ${venueId} no longer exists`);
+      return;
+    }
+    this.logger.log(
+      `income projection refreshed after USDC finalization: venue=${venueId} entries=${result.entriesUpserted} alerts=${result.alerts}`,
+    );
+  }
+
+  private async backfillFinalizedIncomeProjections() {
+    const venues = await this.prisma.payout.findMany({
+      where: { status: "FINALIZED" },
+      distinct: ["venueId"],
+      select: { venueId: true },
+    });
+    for (const { venueId } of venues) {
+      await this.rebuildIncomeProjection(venueId);
+    }
+    if (venues.length > 0) {
+      this.logger.log(`backfilled finalized income projections for ${venues.length} venue(s)`);
+    }
   }
 
   private async markFailed(payoutId: string, allocationId: string, reason: string) {

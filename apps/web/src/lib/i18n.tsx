@@ -159,6 +159,22 @@ const dict: Record<string, { ko: string; en: string }> = {
     en: "Review issues found in allocation, payment, or payroll records.",
   },
   "me.alerts.empty": { ko: "현재 확인할 항목이 없습니다.", en: "There are no items to review." },
+  "me.alerts.workerAction": {
+    ko: "내가 할 일 · 수취 지갑을 연결한 뒤 사업장에 지급을 요청하세요.",
+    en: "Your action · Connect a payout wallet, then ask the venue to complete payment.",
+  },
+  "me.alerts.venueAction": {
+    ko: "처리 주체 · 사업장 또는 급여 담당자의 확인이 필요합니다.",
+    en: "Owner · The venue or payroll administrator needs to review this item.",
+  },
+  "me.alerts.checkWallet": { ko: "수취 지갑 확인", en: "Check payout wallet" },
+  "me.alerts.viewIncome": { ko: "근무 내역 보기", en: "View income entry" },
+  "me.alerts.copyInquiry": { ko: "사업장 문의 문구 복사", en: "Copy venue inquiry" },
+  "me.alerts.inquiryCopied": { ko: "문의 문구 복사됨 ✓", en: "Inquiry copied ✓" },
+  "me.alerts.copyFailed": {
+    ko: "문의 문구를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.",
+    en: "Could not copy the inquiry. Check the browser clipboard permission.",
+  },
   "me.timeline.title": { ko: "근무별 소득 내역", en: "Income by shift" },
   "me.timeline.desc": {
     ko: "근무일별 팁 배분, 지급, 급여 신고 및 원천징수 상태를 확인할 수 있습니다.",
